@@ -9,7 +9,10 @@ Stop running containers and remove images to wipe the db before testing new API 
 ```
 docker-compose down --rmi all
 ```
-
+To open a terminal on the running app:
+```
+docker exec -it recblab-backend-web-1 bash
+```
 # Deploying on Heroku
 You must have [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git) and the [Heroku CLI](https://devcenter.heroku.com/articles/heroku-cli#download-and-install) installed.
 
