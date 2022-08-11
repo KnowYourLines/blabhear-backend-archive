@@ -1,3 +1,5 @@
+import uuid
+
 from django.contrib.auth.models import AbstractUser
 from django.core.validators import RegexValidator
 from django.db import models
@@ -11,3 +13,7 @@ phone_regex = RegexValidator(
 class User(AbstractUser):
     id = models.AutoField(primary_key=True)
     phone_number = models.CharField(validators=[phone_regex], max_length=17, blank=True)
+
+
+class Room(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

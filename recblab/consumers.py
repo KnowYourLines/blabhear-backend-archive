@@ -1,8 +1,22 @@
+from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+
+from recblab.models import Room
 
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
-    pass
+    def get_room(self, room_id):
+        room, created = Room.objects.get_or_create(id=room_id)
+        return room
+
+    async def connect(self):
+        self.room_id = self.scope["url_route"]["kwargs"]["room_id"]
+        self.room = await database_sync_to_async(self.get_room)(self.room_id)
+        await self.channel_layer.group_add(str(self.room.id), self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(str(self.room.id), self.channel_name)
 
 
 class UserConsumer(AsyncJsonWebsocketConsumer):
