@@ -15,6 +15,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_add(str(self.room.id), self.channel_name)
         await self.accept()
 
+        user = self.scope["user"]
+        await self.channel_layer.group_send(
+            user.username,
+            {
+                "type": "hello",
+                "hello": "world",
+            },
+        )
+
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(str(self.room.id), self.channel_name)
 
@@ -29,3 +38,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(self.username, self.channel_name)
+
+    async def hello(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
