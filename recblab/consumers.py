@@ -9,15 +9,37 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         room, created = Room.objects.get_or_create(id=room_id)
         return room
 
+    def add_user_to_room(self, user, room):
+        was_added = False
+        if user not in room.members.all():
+            room.members.add(user)
+            was_added = True
+        members = [user["display_name"] for user in room.members.all().values()]
+        return members, was_added
+
     async def connect(self):
-        self.room_id = self.scope["url_route"]["kwargs"]["room_id"]
-        self.room = await database_sync_to_async(self.get_room)(self.room_id)
-        await self.channel_layer.group_add(str(self.room.id), self.channel_name)
         await self.accept()
 
-        user = self.scope["user"]
+        self.room_id = self.scope["url_route"]["kwargs"]["room_id"]
+        self.room = await database_sync_to_async(self.get_room)(self.room_id)
+        self.user = self.scope["user"]
+
+        await self.channel_layer.group_add(self.room_id, self.channel_name)
+        members, was_added = await database_sync_to_async(self.add_user_to_room)(
+            self.user, self.room
+        )
+        if was_added:
+            await self.channel_layer.group_send(
+                self.room_id,
+                {"type": "members", "members": members},
+            )
+        else:
+            await self.channel_layer.send(
+                self.channel_name, {"type": "members", "members": members}
+            )
+
         await self.channel_layer.group_send(
-            user.username,
+            self.user.username,
             {
                 "type": "hello",
                 "hello": "world",
@@ -26,6 +48,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(str(self.room.id), self.channel_name)
+
+    async def members(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
 
 
 class UserConsumer(AsyncJsonWebsocketConsumer):
