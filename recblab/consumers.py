@@ -107,9 +107,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def fetch_privacy(self):
+        room = await database_sync_to_async(self.get_room)(self.room_id)
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "privacy", "privacy": self.room.private},
+            {"type": "privacy", "privacy": room.private},
         )
 
     async def fetch_join_requests(self):
