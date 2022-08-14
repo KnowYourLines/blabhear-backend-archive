@@ -26,3 +26,4 @@ class User(AbstractUser):
 class Room(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     members = models.ManyToManyField(User)
+    private = models.BooleanField(blank=False, default=False)

@@ -1,3 +1,5 @@
+import asyncio
+
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
@@ -16,6 +18,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             was_added = True
         members = [user["display_name"] for user in room.members.all().values()]
         return members, was_added
+
+    def set_room_privacy(self, private):
+        self.room.private = private
+        self.room.save()
 
     async def connect(self):
         await self.accept()
@@ -37,6 +43,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.send(
                 self.channel_name, {"type": "members", "members": members}
             )
+        await self.channel_layer.send(
+            self.channel_name, {"type": "privacy", "privacy": self.room.private}
+        )
 
         await self.channel_layer.group_send(
             self.user.username,
@@ -49,7 +58,22 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(str(self.room.id), self.channel_name)
 
+    async def receive_json(self, content, **kwargs):
+        if content.get("command") == "update_privacy":
+            asyncio.create_task(self.update_privacy(content))
+
+    async def update_privacy(self, input_payload):
+        await database_sync_to_async(self.set_room_privacy)(input_payload["privacy"])
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "privacy", "privacy": self.room.private},
+        )
+
     async def members(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def privacy(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
