@@ -11,12 +11,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         room, created = Room.objects.get_or_create(id=room_id)
         return room
 
+    def get_all_room_members(self):
+        members = [user["display_name"] for user in self.room.members.all().values()]
+        return members
+
     def add_user_to_room(self, user, room):
         was_added = False
         if user not in room.members.all():
             room.members.add(user)
             was_added = True
-        members = [user["display_name"] for user in room.members.all().values()]
+        members = self.get_all_room_members()
         return members, was_added
 
     def set_room_privacy(self, private):
@@ -63,7 +67,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             if was_added:
                 await self.channel_layer.group_send(
                     self.room_id,
-                    {"type": "members", "members": members},
+                    {"type": "refresh_members"},
                 )
             else:
                 await self.channel_layer.send(
@@ -92,6 +96,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.update_privacy(content))
             if content.get("command") == "fetch_join_requests":
                 asyncio.create_task(self.fetch_join_requests())
+            if content.get("command") == "fetch_members":
+                asyncio.create_task(self.fetch_members())
+
+    async def fetch_members(self):
+        members = await database_sync_to_async(self.get_all_room_members)()
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "members", "members": members},
+        )
 
     async def fetch_join_requests(self):
         all_join_requests = await database_sync_to_async(self.get_all_join_requests)()
@@ -112,6 +125,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def members(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def refresh_members(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
