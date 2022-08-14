@@ -27,3 +27,10 @@ class Room(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     members = models.ManyToManyField(User)
     private = models.BooleanField(blank=False, default=False)
+
+
+class JoinRequest(models.Model):
+    id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE)
+    timestamp = models.DateTimeField(auto_now_add=True)

@@ -3,7 +3,7 @@ import asyncio
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from recblab.models import Room
+from recblab.models import Room, JoinRequest
 
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
@@ -26,6 +26,17 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     def user_not_allowed(self):
         return self.user not in self.room.members.all() and self.room.private
 
+    def get_all_join_requests(self):
+        all_join_requests = list(
+            self.room.joinrequest_set.order_by("-timestamp").values(
+                "user", "user__username", "user__display_name"
+            )
+        )
+        return all_join_requests
+
+    def get_or_create_new_join_request(self):
+        JoinRequest.objects.get_or_create(user=self.user, room=self.room)
+
     async def connect(self):
         await self.accept()
 
@@ -39,6 +50,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.send(
                 self.channel_name,
                 {"type": "allowed", "allowed": False},
+            )
+            await database_sync_to_async(self.get_or_create_new_join_request)()
+            await self.channel_layer.group_send(
+                self.room_id,
+                {"type": "refresh_join_requests"},
             )
         else:
             members, was_added = await database_sync_to_async(self.add_user_to_room)(
@@ -56,6 +72,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.send(
                 self.channel_name, {"type": "privacy", "privacy": self.room.private}
             )
+            await self.fetch_join_requests()
 
         await self.channel_layer.group_send(
             self.user.username,
@@ -73,6 +90,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if not user_not_allowed:
             if content.get("command") == "update_privacy":
                 asyncio.create_task(self.update_privacy(content))
+            if content.get("command") == "fetch_join_requests":
+                asyncio.create_task(self.fetch_join_requests())
+
+    async def fetch_join_requests(self):
+        all_join_requests = await database_sync_to_async(self.get_all_join_requests)()
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "join_requests", "join_requests": all_join_requests},
+        )
 
     async def update_privacy(self, input_payload):
         await database_sync_to_async(self.set_room_privacy)(input_payload["privacy"])
@@ -81,11 +107,19 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             {"type": "privacy", "privacy": self.room.private},
         )
 
+    async def refresh_join_requests(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
     async def members(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
     async def allowed(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def join_requests(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
