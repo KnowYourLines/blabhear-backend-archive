@@ -23,6 +23,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self.room.private = private
         self.room.save()
 
+    def user_not_allowed(self):
+        return self.user not in self.room.members.all() and self.room.private
+
     async def connect(self):
         await self.accept()
 
@@ -31,21 +34,28 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self.user = self.scope["user"]
 
         await self.channel_layer.group_add(self.room_id, self.channel_name)
-        members, was_added = await database_sync_to_async(self.add_user_to_room)(
-            self.user, self.room
-        )
-        if was_added:
-            await self.channel_layer.group_send(
-                self.room_id,
-                {"type": "members", "members": members},
+        user_not_allowed = await database_sync_to_async(self.user_not_allowed)()
+        if user_not_allowed:
+            await self.channel_layer.send(
+                self.channel_name,
+                {"type": "allowed", "allowed": False},
             )
         else:
-            await self.channel_layer.send(
-                self.channel_name, {"type": "members", "members": members}
+            members, was_added = await database_sync_to_async(self.add_user_to_room)(
+                self.user, self.room
             )
-        await self.channel_layer.send(
-            self.channel_name, {"type": "privacy", "privacy": self.room.private}
-        )
+            if was_added:
+                await self.channel_layer.group_send(
+                    self.room_id,
+                    {"type": "members", "members": members},
+                )
+            else:
+                await self.channel_layer.send(
+                    self.channel_name, {"type": "members", "members": members}
+                )
+            await self.channel_layer.send(
+                self.channel_name, {"type": "privacy", "privacy": self.room.private}
+            )
 
         await self.channel_layer.group_send(
             self.user.username,
@@ -59,8 +69,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_discard(str(self.room.id), self.channel_name)
 
     async def receive_json(self, content, **kwargs):
-        if content.get("command") == "update_privacy":
-            asyncio.create_task(self.update_privacy(content))
+        user_not_allowed = await database_sync_to_async(self.user_not_allowed)()
+        if not user_not_allowed:
+            if content.get("command") == "update_privacy":
+                asyncio.create_task(self.update_privacy(content))
 
     async def update_privacy(self, input_payload):
         await database_sync_to_async(self.set_room_privacy)(input_payload["privacy"])
@@ -70,6 +82,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def members(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def allowed(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
