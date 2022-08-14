@@ -73,9 +73,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 await self.channel_layer.send(
                     self.channel_name, {"type": "members", "members": members}
                 )
-            await self.channel_layer.send(
-                self.channel_name, {"type": "privacy", "privacy": self.room.private}
-            )
+            await self.fetch_privacy()
             await self.fetch_join_requests()
 
         await self.channel_layer.group_send(
@@ -94,6 +92,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if not user_not_allowed:
             if content.get("command") == "update_privacy":
                 asyncio.create_task(self.update_privacy(content))
+            if content.get("command") == "fetch_privacy":
+                asyncio.create_task(self.fetch_privacy())
             if content.get("command") == "fetch_join_requests":
                 asyncio.create_task(self.fetch_join_requests())
             if content.get("command") == "fetch_members":
@@ -104,6 +104,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.send(
             self.channel_name,
             {"type": "members", "members": members},
+        )
+
+    async def fetch_privacy(self):
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "privacy", "privacy": self.room.private},
         )
 
     async def fetch_join_requests(self):
@@ -117,7 +123,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await database_sync_to_async(self.set_room_privacy)(input_payload["privacy"])
         await self.channel_layer.group_send(
             self.room_id,
-            {"type": "privacy", "privacy": self.room.private},
+            {"type": "refresh_privacy"},
         )
 
     async def refresh_join_requests(self, event):
@@ -137,6 +143,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def join_requests(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def refresh_privacy(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
