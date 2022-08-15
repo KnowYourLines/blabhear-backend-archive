@@ -50,6 +50,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self.room.members.add(user)
         self.room.joinrequest_set.filter(user=user).delete()
 
+    def approve_all_room_members(self):
+        for request in self.room.joinrequest_set.all():
+            self.room.members.add(request.user)
+        self.room.joinrequest_set.all().delete()
+
     async def connect(self):
         await self.accept()
 
@@ -114,6 +119,27 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.reject_user(content))
             if content.get("command") == "approve_user":
                 asyncio.create_task(self.approve_user(content))
+            if content.get("command") == "approve_all_users":
+                asyncio.create_task(self.approve_all_users())
+
+    async def approve_all_users(self):
+        await database_sync_to_async(self.approve_all_room_members)()
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "refresh_join_requests"},
+        )
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "refresh_members"},
+        )
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "refresh_allowed_status"},
+        )
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "refresh_privacy"},
+        )
 
     async def fetch_allowed_status(self, allowed_status):
         await self.channel_layer.send(
