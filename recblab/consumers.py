@@ -1,9 +1,10 @@
 import asyncio
+from operator import itemgetter
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from recblab.models import Room, JoinRequest, User
+from recblab.models import Room, JoinRequest, User, Notification
 
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
@@ -19,6 +20,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         was_added = False
         if user not in room.members.all():
             room.members.add(user)
+            Notification.objects.create(user=user, room=room)
             was_added = True
         members = self.get_all_room_members()
         return members, was_added
@@ -48,11 +50,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     def approve_room_member(self, username):
         user = User.objects.get(username=username)
         self.room.members.add(user)
+        Notification.objects.create(user=user, room=self.room)
         self.room.joinrequest_set.filter(user=user).delete()
 
     def approve_all_room_members(self):
         for request in self.room.joinrequest_set.all():
             self.room.members.add(request.user)
+            Notification.objects.create(user=request.user, room=self.room)
         self.room.joinrequest_set.all().delete()
 
     async def connect(self):
@@ -237,16 +241,41 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
 
 class UserConsumer(AsyncJsonWebsocketConsumer):
+    def get_user_notifications(self):
+        notifications = list(
+            self.user.notification_set.values("room", "timestamp")
+            .order_by("room", "-timestamp")
+            .distinct("room")
+        )
+        notifications.sort(key=itemgetter("timestamp"), reverse=True)
+        for notification in notifications:
+            notification["room"] = str(notification["room"])
+            notification["timestamp"] = str(notification["timestamp"])
+        return notifications
+
     async def connect(self):
         self.username = str(self.scope["url_route"]["kwargs"]["user_id"])
-        user = self.scope["user"]
-        if self.username == user.username:
+        self.user = self.scope["user"]
+        if self.username == self.user.username:
             await self.channel_layer.group_add(self.username, self.channel_name)
             await self.accept()
+
+            notifications = await database_sync_to_async(self.get_user_notifications)()
+            await self.channel_layer.group_send(
+                self.username,
+                {
+                    "type": "notifications",
+                    "notifications": notifications,
+                },
+            )
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(self.username, self.channel_name)
 
     async def hello(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def notifications(self, event):
         # Send message to WebSocket
         await self.send_json(event)
