@@ -336,19 +336,24 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.update_display_name(content))
 
     async def update_display_name(self, input_payload):
-        display_name, rooms_to_refresh = await database_sync_to_async(
-            self.change_display_name
-        )(input_payload["name"])
-        for room in rooms_to_refresh:
-            await self.channel_layer.group_send(room, {"type": "refresh_members"})
-            await self.channel_layer.group_send(room, {"type": "refresh_join_requests"})
-        await self.channel_layer.group_send(
-            self.username,
-            {
-                "type": "display_name",
-                "display_name": display_name,
-            },
-        )
+        if len(input_payload["name"].strip()) > 0:
+            display_name, rooms_to_refresh = await database_sync_to_async(
+                self.change_display_name
+            )(input_payload["name"])
+            for room in rooms_to_refresh:
+                await self.channel_layer.group_send(room, {"type": "refresh_members"})
+                await self.channel_layer.group_send(
+                    room, {"type": "refresh_join_requests"}
+                )
+            await self.channel_layer.group_send(
+                self.username,
+                {
+                    "type": "display_name",
+                    "display_name": display_name,
+                },
+            )
+        else:
+            await self.fetch_display_name()
 
     async def fetch_display_name(self):
         display_name = self.user.display_name
