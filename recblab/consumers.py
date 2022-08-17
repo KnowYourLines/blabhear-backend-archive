@@ -54,10 +54,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self.room.joinrequest_set.filter(user=user).delete()
 
     def approve_all_room_members(self):
+        added_users = []
         for request in self.room.joinrequest_set.all():
             self.room.members.add(request.user)
             Notification.objects.create(user=request.user, room=self.room)
+            added_users.append(request.user.username)
         self.room.joinrequest_set.all().delete()
+        return added_users
 
     async def connect(self):
         await self.accept()
@@ -86,6 +89,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 await self.channel_layer.group_send(
                     self.room_id,
                     {"type": "refresh_members"},
+                )
+                await self.channel_layer.group_send(
+                    self.user.username,
+                    {
+                        "type": "refresh_notifications",
+                    },
                 )
             else:
                 await self.channel_layer.send(
@@ -127,7 +136,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.approve_all_users())
 
     async def approve_all_users(self):
-        await database_sync_to_async(self.approve_all_room_members)()
+        added_usernames = await database_sync_to_async(self.approve_all_room_members)()
+        for username in added_usernames:
+            await self.channel_layer.group_send(
+                username,
+                {
+                    "type": "refresh_notifications",
+                },
+            )
         await self.channel_layer.group_send(
             self.room_id,
             {"type": "refresh_join_requests"},
@@ -150,10 +166,22 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             self.channel_name,
             {"type": "allowed", "allowed": allowed_status},
         )
+        if not allowed_status:
+            await database_sync_to_async(self.get_or_create_new_join_request)()
+            await self.channel_layer.group_send(
+                self.room_id,
+                {"type": "refresh_join_requests"},
+            )
 
     async def approve_user(self, input_payload):
         await database_sync_to_async(self.approve_room_member)(
             input_payload["username"]
+        )
+        await self.channel_layer.group_send(
+            input_payload["username"],
+            {
+                "type": "refresh_notifications",
+            },
         )
         await self.channel_layer.group_send(
             self.room_id,
@@ -253,6 +281,11 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             notification["timestamp"] = str(notification["timestamp"])
         return notifications
 
+    def leave_room(self, room_id):
+        room_to_leave = Room.objects.get(id=room_id)
+        room_to_leave.members.remove(self.user)
+        self.user.notification_set.filter(room=room_to_leave).delete()
+
     async def connect(self):
         self.username = str(self.scope["url_route"]["kwargs"]["user_id"])
         self.user = self.scope["user"]
@@ -268,14 +301,55 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                     "notifications": notifications,
                 },
             )
+        else:
+            await self.close()
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(self.username, self.channel_name)
+
+    async def receive_json(self, content, **kwargs):
+        if content.get("command") == "exit_room":
+            asyncio.create_task(self.exit_room(content))
+        if content.get("command") == "fetch_notifications":
+            asyncio.create_task(self.fetch_notifications())
+
+    async def fetch_notifications(self):
+        notifications = await database_sync_to_async(self.get_user_notifications)()
+        await self.channel_layer.group_send(
+            self.username,
+            {
+                "type": "notifications",
+                "notifications": notifications,
+            },
+        )
+
+    async def exit_room(self, input_payload):
+        await database_sync_to_async(self.leave_room)(input_payload["room_id"])
+        await self.channel_layer.group_send(
+            input_payload["room_id"],
+            {"type": "refresh_members"},
+        )
+        await self.channel_layer.group_send(
+            input_payload["room_id"],
+            {"type": "refresh_allowed_status"},
+        )
+        notifications = await database_sync_to_async(self.get_user_notifications)()
+        await self.channel_layer.group_send(
+            self.username,
+            {
+                "type": "notifications",
+                "notifications": notifications,
+            },
+        )
 
     async def hello(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
     async def notifications(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def refresh_notifications(self, event):
         # Send message to WebSocket
         await self.send_json(event)
