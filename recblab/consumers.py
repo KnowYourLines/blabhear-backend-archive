@@ -103,14 +103,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.fetch_privacy()
             await self.fetch_join_requests()
 
-        await self.channel_layer.group_send(
-            self.user.username,
-            {
-                "type": "hello",
-                "hello": "world",
-            },
-        )
-
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(str(self.room.id), self.channel_name)
 
@@ -341,10 +333,6 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 "notifications": notifications,
             },
         )
-
-    async def hello(self, event):
-        # Send message to WebSocket
-        await self.send_json(event)
 
     async def notifications(self, event):
         # Send message to WebSocket
