@@ -205,6 +205,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             self.channel_name,
             {"type": "members", "members": members},
         )
+        if self.user.display_name not in members and not self.room.private:
+            await self.channel_layer.send(
+                self.channel_name,
+                {"type": "left_public_room"},
+            )
 
     async def fetch_privacy(self):
         room = await database_sync_to_async(self.get_room)(self.room_id)
@@ -256,6 +261,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def privacy(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def left_public_room(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
