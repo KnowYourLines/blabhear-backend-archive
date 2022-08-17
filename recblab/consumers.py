@@ -13,8 +13,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         return room
 
     def get_all_room_members(self):
-        members = [user["display_name"] for user in self.room.members.all().values()]
-        return members
+        members = self.room.members.all().values()
+        member_display_names = [user["display_name"] for user in members]
+        member_usernames = [user["username"] for user in members]
+        return member_display_names, member_usernames
 
     def add_user_to_room(self, user, room):
         was_added = False
@@ -22,8 +24,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             room.members.add(user)
             Notification.objects.create(user=user, room=room)
             was_added = True
-        members = self.get_all_room_members()
-        return members, was_added
+        member_display_names, member_usernames = self.get_all_room_members()
+        return member_display_names, was_added
 
     def set_room_privacy(self, private):
         self.room.private = private
@@ -200,12 +202,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def fetch_members(self):
-        members = await database_sync_to_async(self.get_all_room_members)()
+        member_display_names, member_usernames = await database_sync_to_async(
+            self.get_all_room_members
+        )()
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "members", "members": members},
+            {"type": "members", "members": member_display_names},
         )
-        if self.user.display_name not in members and not self.room.private:
+        if self.user.username not in member_usernames and not self.room.private:
             await self.channel_layer.send(
                 self.channel_name,
                 {"type": "left_public_room"},
@@ -285,7 +289,20 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
     def leave_room(self, room_id):
         room_to_leave = Room.objects.get(id=room_id)
         room_to_leave.members.remove(self.user)
+        self.user.room_set.remove(room_to_leave)
         self.user.notification_set.filter(room=room_to_leave).delete()
+
+    def change_display_name(self, new_name):
+        self.user.display_name = new_name
+        self.user.save()
+        self.user.room_set.clear()
+        rooms_to_refresh = [
+            str(room["id"]) for room in self.user.room_set.all().values()
+        ] + [
+            str(request["room_id"])
+            for request in self.user.joinrequest_set.all().values()
+        ]
+        return new_name, rooms_to_refresh
 
     async def connect(self):
         self.username = str(self.scope["url_route"]["kwargs"]["user_id"])
@@ -302,6 +319,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                     "notifications": notifications,
                 },
             )
+            await self.fetch_display_name()
         else:
             await self.close()
 
@@ -309,10 +327,35 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_discard(self.username, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
-        if content.get("command") == "exit_room":
-            asyncio.create_task(self.exit_room(content))
-        if content.get("command") == "fetch_notifications":
-            asyncio.create_task(self.fetch_notifications())
+        if self.username == self.user.username:
+            if content.get("command") == "exit_room":
+                asyncio.create_task(self.exit_room(content))
+            if content.get("command") == "fetch_notifications":
+                asyncio.create_task(self.fetch_notifications())
+            if content.get("command") == "update_display_name":
+                asyncio.create_task(self.update_display_name(content))
+
+    async def update_display_name(self, input_payload):
+        display_name, rooms_to_refresh = await database_sync_to_async(
+            self.change_display_name
+        )(input_payload["name"])
+        for room in rooms_to_refresh:
+            await self.channel_layer.group_send(room, {"type": "refresh_members"})
+            await self.channel_layer.group_send(room, {"type": "refresh_join_requests"})
+        await self.channel_layer.group_send(
+            self.username,
+            {
+                "type": "display_name",
+                "display_name": display_name,
+            },
+        )
+
+    async def fetch_display_name(self):
+        display_name = self.user.display_name
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "display_name", "display_name": display_name},
+        )
 
     async def fetch_notifications(self):
         notifications = await database_sync_to_async(self.get_user_notifications)()
@@ -348,5 +391,9 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def refresh_notifications(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def display_name(self, event):
         # Send message to WebSocket
         await self.send_json(event)
