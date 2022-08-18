@@ -14,7 +14,6 @@ from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 import dj_database_url
-import django_heroku
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -145,4 +144,3 @@ CORS_ALLOW_ALL_ORIGINS = True
 if not LOCAL:
     CORS_ALLOW_ALL_ORIGINS = False
     CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS").split(",")
-    django_heroku.settings(locals())
