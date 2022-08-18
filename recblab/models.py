@@ -27,6 +27,12 @@ class Room(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     members = models.ManyToManyField(User)
     private = models.BooleanField(blank=False, default=False)
+    display_name = models.CharField(max_length=150, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.display_name:
+            self.display_name = self.id
+        super(Room, self).save(*args, **kwargs)
 
 
 class JoinRequest(models.Model):

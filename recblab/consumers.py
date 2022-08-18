@@ -291,6 +291,8 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         room_to_leave.members.remove(self.user)
         self.user.room_set.remove(room_to_leave)
         self.user.notification_set.filter(room=room_to_leave).delete()
+        if not room_to_leave.members.all() and not room_to_leave.joinrequest_set.all():
+            room_to_leave.delete()
 
     def change_display_name(self, new_name):
         self.user.display_name = new_name
