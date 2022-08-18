@@ -2,6 +2,6 @@ Django<4
 django-cors-headers
 channels
 channels_redis
-psycopg2-binary>=2.8
+psycopg2>=2.8
 dj-database-url
 firebase-admin
