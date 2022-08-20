@@ -33,12 +33,17 @@ default_app = firebase_admin.initialize_app(cred)
 def get_user(token):
     try:
         decoded_token = auth.verify_id_token(token)
-    except Exception:
-        raise InvalidFirebaseAuthToken("Invalid auth token")
+    except auth.RevokedIdTokenError:
+        raise InvalidFirebaseAuthToken("Token revoked and needs to be refreshed.")
+    except auth.UserDisabledError:
+        raise InvalidFirebaseAuthToken("Token belongs to a disabled user record.")
+    except auth.InvalidIdTokenError:
+        raise InvalidFirebaseAuthToken("Token is invalid.")
+
     try:
         uid = decoded_token.get("uid")
     except Exception:
-        raise FirebaseAuthError()
+        raise FirebaseAuthError("Missing uid.")
 
     user, created = User.objects.update_or_create(
         username=uid,

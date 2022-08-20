@@ -1,7 +1,3 @@
-class NoFirebaseAuthToken(Exception):
-    pass
-
-
 class InvalidFirebaseAuthToken(Exception):
     pass
 
