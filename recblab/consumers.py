@@ -5,7 +5,11 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from recblab.models import Room, JoinRequest, User, Notification
-from recblab.storage import generate_upload_signed_url_v4
+from recblab.storage import (
+    generate_upload_signed_url_v4,
+    audio_file_exists,
+    generate_download_signed_url_v4,
+)
 
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
@@ -73,6 +77,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         ]
         return new_name, users_to_refresh
 
+    def get_audio_filename(self):
+        return self.room.audio_filename
+
     async def connect(self):
         await self.accept()
 
@@ -111,6 +118,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 await self.channel_layer.send(
                     self.channel_name, {"type": "members", "members": members}
                 )
+            filename = await database_sync_to_async(self.get_audio_filename)()
+            if audio_file_exists(f"{self.room.id}/{filename}"):
+                url = generate_download_signed_url_v4(f"{self.room.id}/{filename}")
+                await self.channel_layer.send(
+                    self.channel_name,
+                    {"type": "download_url", "download_url": url},
+                )
             await self.fetch_display_name()
             await self.fetch_privacy()
             await self.fetch_join_requests()
@@ -141,12 +155,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             if content.get("command") == "update_display_name":
                 asyncio.create_task(self.update_display_name(content))
             if content.get("command") == "fetch_upload_url":
-                asyncio.create_task(self.fetch_upload_url(content))
+                asyncio.create_task(self.fetch_upload_url())
 
-    async def fetch_upload_url(self, input_payload):
-        url = generate_upload_signed_url_v4(
-            f"{self.room.id}/{input_payload['filename']}"
-        )
+    async def fetch_upload_url(self):
+        filename = await database_sync_to_async(self.get_audio_filename)()
+        url = generate_upload_signed_url_v4(f"{self.room.id}/{filename}")
         await self.channel_layer.send(
             self.channel_name,
             {"type": "upload_url", "upload_url": url},
@@ -326,6 +339,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def upload_url(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def download_url(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 

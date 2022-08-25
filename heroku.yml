@@ -22,6 +22,7 @@ setup:
     GCP_STORAGE_CLIENT_ID: version
     GCP_STORAGE_CLIENT_CERT_URL: control
     GCP_UPLOAD_BUCKET: storage
+    GCP_DOWNLOAD_BUCKET: storage
     ALLOWED_HOSTS: frontend
 build:
   docker:

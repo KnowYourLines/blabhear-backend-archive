@@ -28,6 +28,7 @@ class Room(models.Model):
     members = models.ManyToManyField(User)
     private = models.BooleanField(blank=False, default=False)
     display_name = models.CharField(max_length=150, blank=True)
+    audio_filename = models.UUIDField(default=uuid.uuid4)
 
     def save(self, *args, **kwargs):
         if not self.display_name:
