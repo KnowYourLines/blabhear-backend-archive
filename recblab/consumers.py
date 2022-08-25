@@ -5,6 +5,7 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from recblab.models import Room, JoinRequest, User, Notification
+from recblab.storage import generate_upload_signed_url_v4
 
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
@@ -139,6 +140,17 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.approve_all_users())
             if content.get("command") == "update_display_name":
                 asyncio.create_task(self.update_display_name(content))
+            if content.get("command") == "fetch_upload_url":
+                asyncio.create_task(self.fetch_upload_url(content))
+
+    async def fetch_upload_url(self, input_payload):
+        url = generate_upload_signed_url_v4(
+            f"{self.room.id}/{input_payload['filename']}"
+        )
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "upload_url", "upload_url": url},
+        )
 
     async def update_display_name(self, input_payload):
         if len(input_payload["name"].strip()) > 0:
@@ -310,6 +322,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def display_name(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def upload_url(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 

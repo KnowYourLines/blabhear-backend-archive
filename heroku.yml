@@ -15,6 +15,13 @@ setup:
     FIREBASE_CLIENT_EMAIL: to
     FIREBASE_CLIENT_ID: version
     FIREBASE_CLIENT_CERT_URL: control
+    GCP_STORAGE_PROJECT_ID: don't
+    GCP_STORAGE_PRIVATE_KEY_ID: commit
+    GCP_STORAGE_PRIVATE_KEY: these
+    GCP_STORAGE_CLIENT_EMAIL: to
+    GCP_STORAGE_CLIENT_ID: version
+    GCP_STORAGE_CLIENT_CERT_URL: control
+    GCP_UPLOAD_BUCKET: storage
     ALLOWED_HOSTS: frontend
 build:
   docker:
