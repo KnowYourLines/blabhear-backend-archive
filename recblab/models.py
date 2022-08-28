@@ -30,15 +30,13 @@ class Room(models.Model):
     def save(self, *args, **kwargs):
         if not self.display_name:
             self.display_name = self.id
-        room_members = set(
-            [
-                user["username"]
-                for user in Room.objects.filter(id=self.id)
-                .first()
-                .members.all()
-                .values("username")
-            ]
-        )
+        room = Room.objects.filter(id=self.id).first()
+        if room:
+            room_members = set(
+                [user["username"] for user in room.members.all().values("username")]
+            )
+        else:
+            room_members = set()
         if self.audio_file_creator and self.audio_file_creator not in room_members:
             raise ValidationError(_(f"File creator must have username of room member."))
         super(Room, self).save(*args, **kwargs)
