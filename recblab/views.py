@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime
 from http import HTTPStatus
 
 from asgiref.sync import async_to_sync
@@ -13,6 +14,8 @@ from django.http import (
 from django.views.decorators.csrf import csrf_exempt
 from google.auth.transport import requests
 from google.oauth2 import id_token
+
+from recblab.models import Room
 
 
 @csrf_exempt
@@ -40,17 +43,25 @@ def audio_upload_webhook(request):
         attributes = notification["message"]["attributes"]
         filename = attributes["objectId"].split("/")
         file_creator = filename[1]
-        file_room = filename[0]
-        event_timestamp = attributes["eventTime"]
-
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            file_room,
-            {
-                "type": "upload_successful",
-                "uploader": file_creator,
-                "uploaded_at": event_timestamp,
-            },
+        file_room_id = filename[0]
+        event_timestamp = datetime.strptime(
+            attributes["eventTime"], "%Y-%m-%dT%H:%M:%S.%f%z"
         )
+        room = Room.objects.get(id=file_room_id)
+        previous_event_timestamp = room.audio_file_created_at
+
+        if previous_event_timestamp < event_timestamp:
+            room.audio_file_creator = file_creator
+            room.audio_file_created_at = event_timestamp
+            room.save()
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                file_room_id,
+                {
+                    "type": "upload_successful",
+                    "uploader": file_creator,
+                },
+            )
+
         return HttpResponse(status=HTTPStatus.OK)
     return HttpResponseNotAllowed(permitted_methods=["POST"])

@@ -1,5 +1,4 @@
 import asyncio
-from datetime import datetime
 from operator import itemgetter
 
 from channels.db import database_sync_to_async
@@ -80,20 +79,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     def get_audio_file_creator(self):
         return self.room.audio_file_creator
-
-    def update_room_audio_details(self, payload):
-        updated = False
-        if self.room.audio_file_creator != payload["uploader"]:
-            self.room.audio_file_creator = payload["uploader"]
-            updated = True
-        uploaded_at = datetime.strptime(
-            payload["uploaded_at"], "%Y-%m-%dT%H:%M:%S.%f%z"
-        )
-        if self.room.audio_file_created_at < uploaded_at:
-            self.room.audio_file_created_at = uploaded_at
-            updated = True
-        self.room.save()
-        return updated
 
     async def connect(self):
         await self.accept()
@@ -361,10 +346,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def upload_successful(self, event):
-        was_updated = await database_sync_to_async(self.update_room_audio_details)(
-            event
-        )
-        if event["uploader"] != self.user.username and was_updated:
+        if event["uploader"] != self.user.username:
             url = generate_download_signed_url_v4(f"{self.room.id}/{event['uploader']}")
             await self.channel_layer.send(
                 self.channel_name,
