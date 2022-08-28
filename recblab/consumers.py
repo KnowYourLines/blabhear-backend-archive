@@ -118,9 +118,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 await self.channel_layer.send(
                     self.channel_name, {"type": "members", "members": members}
                 )
-            filename = await database_sync_to_async(self.get_audio_file_creator)()
-            if filename and audio_file_exists(f"{self.room.id}/{filename}"):
-                url = generate_download_signed_url_v4(f"{self.room.id}/{filename}")
+            file_creator = await database_sync_to_async(self.get_audio_file_creator)()
+            if (
+                file_creator
+                and file_creator != self.user.username
+                and audio_file_exists(f"{self.room.id}/{file_creator}")
+            ):
+                url = generate_download_signed_url_v4(f"{self.room.id}/{file_creator}")
                 await self.channel_layer.send(
                     self.channel_name,
                     {"type": "download_url", "download_url": url},
