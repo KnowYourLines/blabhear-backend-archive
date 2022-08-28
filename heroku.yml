@@ -23,6 +23,7 @@ setup:
     GCP_STORAGE_CLIENT_CERT_URL: control
     GCP_UPLOAD_BUCKET: storage
     GCP_DOWNLOAD_BUCKET: storage
+    PUBSUB_VERIFICATION_TOKEN: GCP
     ALLOWED_HOSTS: frontend
 build:
   docker:
