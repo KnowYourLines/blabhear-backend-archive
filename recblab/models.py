@@ -33,7 +33,8 @@ class Room(models.Model):
         room_members = set(
             [
                 user["username"]
-                for user in Room.objects.get(id=self.id)
+                for user in Room.objects.filter(id=self.id)
+                .first()
                 .members.all()
                 .values("username")
             ]
