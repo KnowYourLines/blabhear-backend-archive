@@ -5,10 +5,12 @@ from http import HTTPStatus
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.http import HttpResponseBadRequest, HttpResponse, HttpResponseForbidden
+from django.views.decorators.csrf import csrf_exempt
 from google.auth.transport import requests
 from google.oauth2 import id_token
 
 
+@csrf_exempt
 def audio_upload_webhook(request):
     if request.GET.get("token", "") != os.environ.get("PUBSUB_VERIFICATION_TOKEN"):
         return HttpResponseBadRequest()
