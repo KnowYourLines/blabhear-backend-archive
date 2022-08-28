@@ -36,8 +36,8 @@ class Room(models.Model):
             .members.all()
             .values("username")
         ]
-        if self.audio_file_creator not in room_users:
-            raise ValidationError(_("Filename must be username of room member."))
+        if self.audio_file_creator and self.audio_file_creator not in room_users:
+            raise ValidationError(_("File creator must be username of room member."))
         super(Room, self).save(*args, **kwargs)
 
 
