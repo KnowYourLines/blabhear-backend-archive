@@ -1,18 +1,14 @@
 import uuid
 
 from django.contrib.auth.models import AbstractUser
-from django.core.validators import RegexValidator
+from django.core.exceptions import ValidationError
 from django.db import models
-
-phone_regex = RegexValidator(
-    regex=r"^\+?1?\d{9,15}$",
-    message="Phone number must be entered in the format: '+999999999'. Up to 15 digits allowed.",
-)
+from django.utils.translation import gettext_lazy as _
 
 
 class User(AbstractUser):
     id = models.AutoField(primary_key=True)
-    phone_number = models.CharField(validators=[phone_regex], max_length=17, blank=True)
+    phone_number = models.CharField(max_length=17, blank=True)
     display_name = models.CharField(max_length=150, blank=True)
 
     def save(self, *args, **kwargs):
@@ -28,11 +24,20 @@ class Room(models.Model):
     members = models.ManyToManyField(User)
     private = models.BooleanField(blank=False, default=False)
     display_name = models.CharField(max_length=150, blank=True)
-    audio_filename = models.UUIDField(default=uuid.uuid4)
+    audio_file_creator = models.CharField(default="", max_length=150, blank=True)
+    audio_file_created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
         if not self.display_name:
             self.display_name = self.id
+        room_users = [
+            username
+            for username in Room.objects.get(id=self.id)
+            .members.all()
+            .values("username")
+        ]
+        if self.audio_file_creator not in room_users:
+            raise ValidationError(_("Filename must be username of room member."))
         super(Room, self).save(*args, **kwargs)
 
 
