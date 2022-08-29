@@ -361,7 +361,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 class UserConsumer(AsyncJsonWebsocketConsumer):
     def get_user_notifications(self):
         notifications = list(
-            self.user.notification_set.values("room", "room__display_name", "timestamp")
+            self.user.notification_set.values(
+                "room",
+                "room__display_name",
+                "audio_uploaded_by__display_name",
+                "timestamp",
+            )
             .order_by("room", "-timestamp")
             .distinct("room")
         )

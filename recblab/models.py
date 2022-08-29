@@ -54,3 +54,6 @@ class Notification(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     room = models.ForeignKey(Room, on_delete=models.CASCADE)
     timestamp = models.DateTimeField(auto_now_add=True)
+    audio_uploaded_by = models.ForeignKey(
+        User, null=True, related_name="user_uploading_audio", on_delete=models.CASCADE
+    )
