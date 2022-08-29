@@ -419,7 +419,16 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             str(request["room_id"])
             for request in self.user.joinrequest_set.all().values()
         ]
-        return new_name, rooms_to_refresh
+        rooms_to_refresh = set(rooms_to_refresh)
+        users_to_refresh = set(
+            [
+                str(user["user__username"])
+                for user in Notification.objects.filter(audio_uploaded_by=self.user)
+                .values("user__username")
+                .order_by()
+            ]
+        )
+        return new_name, rooms_to_refresh, users_to_refresh
 
     async def connect(self):
         self.username = str(self.scope["url_route"]["kwargs"]["user_id"])
@@ -454,13 +463,24 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
 
     async def update_display_name(self, input_payload):
         if len(input_payload["name"].strip()) > 0:
-            display_name, rooms_to_refresh = await database_sync_to_async(
-                self.change_display_name
-            )(input_payload["name"])
+            (
+                display_name,
+                rooms_to_refresh,
+                users_to_refresh,
+            ) = await database_sync_to_async(self.change_display_name)(
+                input_payload["name"]
+            )
             for room in rooms_to_refresh:
                 await self.channel_layer.group_send(room, {"type": "refresh_members"})
                 await self.channel_layer.group_send(
                     room, {"type": "refresh_join_requests"}
+                )
+            for username in users_to_refresh:
+                await self.channel_layer.group_send(
+                    username,
+                    {
+                        "type": "refresh_notifications",
+                    },
                 )
             await self.channel_layer.group_send(
                 self.username,

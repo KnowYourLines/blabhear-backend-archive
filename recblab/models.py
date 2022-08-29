@@ -48,6 +48,14 @@ class JoinRequest(models.Model):
     room = models.ForeignKey(Room, on_delete=models.CASCADE)
     timestamp = models.DateTimeField(auto_now_add=True)
 
+    def save(self, *args, **kwargs):
+        other_requests = JoinRequest.objects.filter(
+            user=self.user, room=self.room
+        ).exclude(id=self.id)
+        if other_requests.exists():
+            raise ValidationError(_("Join request must be unique per user in room."))
+        super(JoinRequest, self).save(*args, **kwargs)
+
 
 class Notification(models.Model):
     id = models.AutoField(primary_key=True)
