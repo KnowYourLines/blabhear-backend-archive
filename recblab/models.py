@@ -57,3 +57,9 @@ class Notification(models.Model):
     audio_uploaded_by = models.ForeignKey(
         User, null=True, related_name="user_uploading_audio", on_delete=models.CASCADE
     )
+    read = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        if Notification.objects.filter(user=self.user, room=self.room).exists():
+            raise ValidationError(_("Notification must be unique per user in room."))
+        super(Notification, self).save(*args, **kwargs)
