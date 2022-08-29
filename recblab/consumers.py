@@ -80,13 +80,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     def get_audio_file_creator(self):
         return self.room.audio_file_creator
 
-    def read_room_notification(self):
+    def read_unread_room_notification(self):
         room_notification = Notification.objects.get(user=self.user, room=self.room)
         if not room_notification.read:
             room_notification.read = True
             room_notification.save()
-            return True
-        return False
 
     async def connect(self):
         await self.accept()
@@ -116,24 +114,17 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     self.room_id,
                     {"type": "refresh_members"},
                 )
-                await self.channel_layer.group_send(
-                    self.user.username,
-                    {
-                        "type": "refresh_notifications",
-                    },
-                )
             else:
                 await self.channel_layer.send(
                     self.channel_name, {"type": "members", "members": members}
                 )
-            was_read = await database_sync_to_async(self.read_room_notification)()
-            if was_read:
-                await self.channel_layer.group_send(
-                    self.user.username,
-                    {
-                        "type": "refresh_notifications",
-                    },
-                )
+            await database_sync_to_async(self.read_unread_room_notification)()
+            await self.channel_layer.group_send(
+                self.user.username,
+                {
+                    "type": "refresh_notifications",
+                },
+            )
             file_creator = await database_sync_to_async(self.get_audio_file_creator)()
             if (
                 file_creator
@@ -366,14 +357,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def upload_successful(self, event):
-        was_read = await database_sync_to_async(self.read_room_notification)()
-        if was_read:
-            await self.channel_layer.group_send(
-                self.user.username,
-                {
-                    "type": "refresh_notifications",
-                },
-            )
+        await database_sync_to_async(self.read_unread_room_notification)()
+        await self.channel_layer.group_send(
+            self.user.username,
+            {
+                "type": "refresh_notifications",
+            },
+        )
         if event["uploader"] != self.user.username:
             url = generate_download_signed_url_v4(f"{self.room.id}/{event['uploader']}")
             await self.channel_layer.send(

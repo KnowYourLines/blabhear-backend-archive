@@ -59,7 +59,7 @@ def audio_upload_webhook(request):
                 notification = Notification.objects.get(user=user, room=room)
                 notification.timestamp = event_timestamp
                 notification.audio_uploaded_by = User.objects.get(username=file_creator)
-                notification.read = False
+                notification.read = notification.user.username == file_creator
                 notification.save()
                 async_to_sync(channel_layer.group_send)(
                     user.username, {"type": "refresh_notifications"}
