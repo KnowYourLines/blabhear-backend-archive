@@ -62,9 +62,7 @@ class Notification(models.Model):
     def save(self, *args, **kwargs):
         other_notifications = Notification.objects.filter(
             user=self.user, room=self.room
-        )
-        if self.id:
-            other_notifications = other_notifications.exclude(id=self.id)
+        ).exclude(id=self.id)
         if other_notifications.exists():
             raise ValidationError(_("Notification must be unique per user in room."))
         super(Notification, self).save(*args, **kwargs)
