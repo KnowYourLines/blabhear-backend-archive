@@ -15,7 +15,7 @@ from django.views.decorators.csrf import csrf_exempt
 from google.auth.transport import requests
 from google.oauth2 import id_token
 
-from recblab.models import Room, Notification
+from recblab.models import Room, Notification, User
 
 
 @csrf_exempt
@@ -65,7 +65,7 @@ def audio_upload_webhook(request):
             for user in room.members.all():
                 notification = Notification.objects.get(user=user, room=room)
                 notification.timestamp = event_timestamp
-                notification.audio_uploaded_by = user
+                notification.audio_uploaded_by = User.objects.get(username=file_creator)
                 notification.read = False
                 notification.save()
                 async_to_sync(channel_layer.group_send)(
