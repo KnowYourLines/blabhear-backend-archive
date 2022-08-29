@@ -55,13 +55,6 @@ def audio_upload_webhook(request):
             room.audio_file_created_at = event_timestamp
             room.save()
             channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                file_room_id,
-                {
-                    "type": "upload_successful",
-                    "uploader": file_creator,
-                },
-            )
             for user in room.members.all():
                 notification = Notification.objects.get(user=user, room=room)
                 notification.timestamp = event_timestamp
@@ -71,6 +64,13 @@ def audio_upload_webhook(request):
                 async_to_sync(channel_layer.group_send)(
                     user.username, {"type": "refresh_notifications"}
                 )
+            async_to_sync(channel_layer.group_send)(
+                file_room_id,
+                {
+                    "type": "upload_successful",
+                    "uploader": file_creator,
+                },
+            )
 
         return HttpResponse(status=HTTPStatus.OK)
     return HttpResponseNotAllowed(permitted_methods=["POST"])

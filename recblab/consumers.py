@@ -366,6 +366,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def upload_successful(self, event):
+        was_read = await database_sync_to_async(self.read_room_notification)()
+        if was_read:
+            await self.channel_layer.group_send(
+                self.user.username,
+                {
+                    "type": "refresh_notifications",
+                },
+            )
         if event["uploader"] != self.user.username:
             url = generate_download_signed_url_v4(f"{self.room.id}/{event['uploader']}")
             await self.channel_layer.send(
