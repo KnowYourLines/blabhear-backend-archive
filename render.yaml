@@ -65,50 +65,72 @@ envVarGroups:
   - name: gcp-storage-creds
     envVars:
       - key: GCP_STORAGE_PROJECT_ID
+        value: placeholder
         sync: false
       - key: GCP_STORAGE_PRIVATE_KEY_ID
+        value: placeholder
         sync: false
       - key: GCP_STORAGE_PRIVATE_KEY
+        value: placeholder
         sync: false
       - key: GCP_STORAGE_CLIENT_EMAIL
+        value: placeholder
         sync: false
       - key: GCP_STORAGE_CLIENT_ID
+        value: placeholder
         sync: false
       - key: GCP_STORAGE_CLIENT_CERT_URL
+        value: placeholder
         sync: false
       - key: GCP_UPLOAD_BUCKET
+        value: placeholder
         sync: false
       - key: GCP_DOWNLOAD_BUCKET
+        value: placeholder
         sync: false
       - key: PUBSUB_VERIFICATION_TOKEN
+        value: placeholder
         sync: false
   - name: firebase-creds
     envVars:
       - key: FIREBASE_PROJECT_ID
+        value: placeholder
         sync: false
       - key: FIREBASE_PRIVATE_KEY_ID
+        value: placeholder
         sync: false
       - key: FIREBASE_PRIVATE_KEY
+        value: placeholder
         sync: false
       - key: FIREBASE_CLIENT_EMAIL
+        value: placeholder
         sync: false
       - key: FIREBASE_CLIENT_ID
+        value: placeholder
         sync: false
       - key: FIREBASE_CLIENT_CERT_URL
+        value: placeholder
         sync: false
   - name: firebase-frontend-creds
     envVars:
       - key: VUE_APP_FIREBASE_API_KEY
+        value: placeholder
         sync: false
       - key: VUE_APP_FIREBASE_AUTH_DOMAIN
+        value: placeholder
         sync: false
       - key: VUE_APP_FIREBASE_PROJECT_ID
+        value: placeholder
         sync: false
       - key: VUE_APP_FIREBASE_STORAGE_BUCKET
+        value: placeholder
         sync: false
       - key: VUE_APP_FIREBASE_MESSAGING_SENDER_ID
+        value: placeholder
         sync: false
       - key: VUE_APP_FIREBASE_APP_ID
+        value: placeholder
         sync: false
       - key: VUE_APP_FIREBASE_MEASUREMENT_ID
+        value: placeholder
         sync: false
