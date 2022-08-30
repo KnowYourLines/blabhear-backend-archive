@@ -1,0 +1,109 @@
+services:
+  - type: web
+    name: recblab-frontend
+    env: static
+    buildCommand: yarn build
+    staticPublishPath: dist
+    domains:
+      - recblab.com
+    envVars:
+      - key: VUE_APP_BACKEND_URL
+        fromService:
+          name: recblab-backend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - fromGroup: firebase-frontend-creds
+
+  - type: redis
+    name: recblab-redis
+    plan: free
+    ipAllowList: [] # only allow internal connections
+
+  - type: web
+    name: recblab-backend
+    env: python
+    repo: https://github.com/KnowYourLines/recblab-backend.git
+    region: ohio
+    plan: free
+    branch: main
+    buildCommand: "pip install -r requirements.txt; python manage.py makemigrations recblab; python manage.py migrate"
+    startCommand: "daphne server.asgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.6
+      - key: DEBUG
+        value: False
+      - key: LOCAL
+        value: False
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS
+        value: recblab.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: recblab-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: recblab-redis
+          property: connectionString
+      - fromGroup: firebase-creds
+      - fromGroup: gcp-storage-creds
+
+databases:
+  - name: recblab-db
+    postgresMajorVersion: 14
+    ipAllowList: [] # only allow internal connections
+
+envVarGroups:
+  - name: gcp-storage-creds
+    envVars:
+      - key: GCP_STORAGE_PROJECT_ID
+        sync: false
+      - key: GCP_STORAGE_PRIVATE_KEY_ID
+        sync: false
+      - key: GCP_STORAGE_PRIVATE_KEY
+        sync: false
+      - key: GCP_STORAGE_CLIENT_EMAIL
+        sync: false
+      - key: GCP_STORAGE_CLIENT_ID
+        sync: false
+      - key: GCP_STORAGE_CLIENT_CERT_URL
+        sync: false
+      - key: GCP_UPLOAD_BUCKET
+        sync: false
+      - key: GCP_DOWNLOAD_BUCKET
+        sync: false
+      - key: PUBSUB_VERIFICATION_TOKEN
+        sync: false
+  - name: firebase-creds
+    envVars:
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_CLIENT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_CERT_URL
+        sync: false
+  - name: firebase-frontend-creds
+    envVars:
+      - key: VUE_APP_FIREBASE_API_KEY
+        sync: false
+      - key: VUE_APP_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: VUE_APP_FIREBASE_PROJECT_ID
+        sync: false
+      - key: VUE_APP_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: VUE_APP_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: VUE_APP_FIREBASE_APP_ID
+        sync: false
+      - key: VUE_APP_FIREBASE_MEASUREMENT_ID
+        sync: false
