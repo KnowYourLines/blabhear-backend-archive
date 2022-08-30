@@ -33,7 +33,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.10.6
       - key: DEBUG
-        value: False
+        value: True
       - key: LOCAL
         value: False
       - key: SECRET_KEY
