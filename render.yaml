@@ -2,6 +2,7 @@ services:
   - type: web
     name: recblab-frontend
     env: static
+    plan: free
     buildCommand: yarn build
     staticPublishPath: dist
     domains:
@@ -53,6 +54,7 @@ services:
 
 databases:
   - name: recblab-db
+    plan: free
     postgresMajorVersion: 14
     ipAllowList: [] # only allow internal connections
 
