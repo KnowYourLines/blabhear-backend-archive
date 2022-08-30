@@ -2,7 +2,6 @@ services:
   - type: web
     name: recblab-frontend
     env: static
-    plan: free
     buildCommand: yarn build
     staticPublishPath: dist
     domains:
