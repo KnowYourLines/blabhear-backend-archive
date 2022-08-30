@@ -1,6 +1,7 @@
 services:
   - type: web
     name: recblab-frontend
+    repo: https://github.com/KnowYourLines/recblab-frontend.git
     env: static
     buildCommand: yarn build
     staticPublishPath: dist
