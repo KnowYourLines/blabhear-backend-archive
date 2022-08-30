@@ -7,8 +7,6 @@ services:
     domains:
       - recblab.com
     envVars:
-      - key: TEST
-        sync: false
       - key: VUE_APP_BACKEND_URL
         fromService:
           name: recblab-backend
