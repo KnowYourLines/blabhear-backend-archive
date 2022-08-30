@@ -42,7 +42,7 @@ services:
     plan: free
     branch: main
     buildCommand: "pip install -r requirements.txt; python manage.py makemigrations recblab; python manage.py migrate"
-    startCommand: "daphne server.asgi:application --bind 0.0.0.0"
+    startCommand: "daphne server.asgi:application --bind 0.0.0.0 --port 10000"
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.6
