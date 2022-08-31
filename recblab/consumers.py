@@ -27,7 +27,21 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         was_added = False
         if user not in room.members.all():
             room.members.add(user)
-            Notification.objects.get_or_create(user=user, room=room)
+            if room.audio_file_creator:
+                room_audio_creator = User.objects.filter(
+                    username=room.audio_file_creator
+                ).first()
+                room_audio_timestamp = room.audio_file_created_at
+                Notification.objects.update_or_create(
+                    user=user,
+                    room=room,
+                    defaults={
+                        "audio_uploaded_by": room_audio_creator,
+                        "timestamp": room_audio_timestamp,
+                    },
+                )
+            else:
+                Notification.objects.get_or_create(user=user, room=room)
             was_added = True
         member_display_names, member_usernames = self.get_all_room_members()
         return member_display_names, was_added
@@ -57,14 +71,42 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     def approve_room_member(self, username):
         user = User.objects.get(username=username)
         self.room.members.add(user)
-        Notification.objects.get_or_create(user=user, room=self.room)
+        if self.room.audio_file_creator:
+            room_audio_creator = User.objects.filter(
+                username=self.room.audio_file_creator
+            ).first()
+            room_audio_timestamp = self.room.audio_file_created_at
+            Notification.objects.update_or_create(
+                user=user,
+                room=self.room,
+                defaults={
+                    "audio_uploaded_by": room_audio_creator,
+                    "timestamp": room_audio_timestamp,
+                },
+            )
+        else:
+            Notification.objects.get_or_create(user=user, room=self.room)
         self.room.joinrequest_set.filter(user=user).delete()
 
     def approve_all_room_members(self):
         added_users = []
         for request in self.room.joinrequest_set.all():
             self.room.members.add(request.user)
-            Notification.objects.get_or_create(user=request.user, room=self.room)
+            if self.room.audio_file_creator:
+                room_audio_creator = User.objects.filter(
+                    username=self.room.audio_file_creator
+                ).first()
+                room_audio_timestamp = self.room.audio_file_created_at
+                Notification.objects.update_or_create(
+                    user=request.user,
+                    room=self.room,
+                    defaults={
+                        "audio_uploaded_by": room_audio_creator,
+                        "timestamp": room_audio_timestamp,
+                    },
+                )
+            else:
+                Notification.objects.get_or_create(user=request.user, room=self.room)
             added_users.append(request.user.username)
         self.room.joinrequest_set.all().delete()
         return added_users
