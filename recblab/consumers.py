@@ -32,14 +32,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     username=room.audio_file_creator
                 ).first()
                 room_audio_timestamp = room.audio_file_created_at
-                Notification.objects.update_or_create(
+                notification, created = Notification.objects.update_or_create(
                     user=user,
                     room=room,
                     defaults={
                         "audio_uploaded_by": room_audio_creator,
-                        "timestamp": room_audio_timestamp,
                     },
                 )
+                if created:
+                    notification.timestamp = room_audio_timestamp
+                    notification.save()
             else:
                 Notification.objects.get_or_create(user=user, room=room)
             was_added = True
@@ -76,14 +78,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 username=self.room.audio_file_creator
             ).first()
             room_audio_timestamp = self.room.audio_file_created_at
-            Notification.objects.update_or_create(
+            notification, created = Notification.objects.update_or_create(
                 user=user,
                 room=self.room,
                 defaults={
                     "audio_uploaded_by": room_audio_creator,
-                    "timestamp": room_audio_timestamp,
                 },
             )
+            if created:
+                notification.timestamp = room_audio_timestamp
+                notification.save()
         else:
             Notification.objects.get_or_create(user=user, room=self.room)
         self.room.joinrequest_set.filter(user=user).delete()
@@ -97,14 +101,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     username=self.room.audio_file_creator
                 ).first()
                 room_audio_timestamp = self.room.audio_file_created_at
-                Notification.objects.update_or_create(
+                notification, created = Notification.objects.update_or_create(
                     user=request.user,
                     room=self.room,
                     defaults={
                         "audio_uploaded_by": room_audio_creator,
-                        "timestamp": room_audio_timestamp,
                     },
                 )
+                if created:
+                    notification.timestamp = room_audio_timestamp
+                    notification.save()
             else:
                 Notification.objects.get_or_create(user=request.user, room=self.room)
             added_users.append(request.user.username)
