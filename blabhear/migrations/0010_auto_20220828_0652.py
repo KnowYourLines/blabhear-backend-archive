@@ -7,7 +7,7 @@ import django.utils.timezone
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('recblab', '0009_room_audio_filename'),
+        ('blabhear', '0009_room_audio_filename'),
     ]
 
     operations = [

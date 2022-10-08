@@ -8,7 +8,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('recblab', '0010_auto_20220828_0652'),
+        ('blabhear', '0010_auto_20220828_0652'),
     ]
 
     operations = [

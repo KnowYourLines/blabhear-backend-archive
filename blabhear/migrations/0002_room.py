@@ -7,7 +7,7 @@ import uuid
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('recblab', '0001_initial'),
+        ('blabhear', '0001_initial'),
     ]
 
     operations = [

@@ -15,7 +15,7 @@ from django.views.decorators.csrf import csrf_exempt
 from google.auth.transport import requests
 from google.oauth2 import id_token
 
-from recblab.models import Room, Notification, User
+from blabhear.models import Room, Notification, User
 
 
 @csrf_exempt

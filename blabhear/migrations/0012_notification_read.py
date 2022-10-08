@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('recblab', '0011_notification_audio_uploaded_by'),
+        ('blabhear', '0011_notification_audio_uploaded_by'),
     ]
 
     operations = [

@@ -46,7 +46,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "channels",
     "corsheaders",
-    "recblab",
+    "blabhear",
 ]
 
 MIDDLEWARE = [
@@ -130,7 +130,7 @@ STATIC_URL = "/static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-AUTH_USER_MODEL = "recblab.User"
+AUTH_USER_MODEL = "blabhear.User"
 
 LOCAL = bool(os.environ.get("LOCAL") == "True")
 

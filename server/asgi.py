@@ -18,8 +18,8 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "server.settings")
 django_asgi_app = get_asgi_application()
 
 from channels.routing import ProtocolTypeRouter, URLRouter
-from recblab.authentication import TokenAuthMiddlewareStack
-from recblab import routing
+from blabhear.authentication import TokenAuthMiddlewareStack
+from blabhear import routing
 
 application = ProtocolTypeRouter(
     {

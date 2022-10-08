@@ -7,8 +7,8 @@ from channels.auth import AuthMiddlewareStack
 from channels.db import database_sync_to_async
 from firebase_admin import auth, credentials
 
-from recblab.exceptions import InvalidFirebaseAuthToken, FirebaseAuthError
-from recblab.models import User
+from blabhear.exceptions import InvalidFirebaseAuthToken, FirebaseAuthError
+from blabhear.models import User
 
 logger = logging.getLogger(__name__)
 cred = credentials.Certificate(

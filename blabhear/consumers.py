@@ -4,8 +4,8 @@ from operator import itemgetter
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from recblab.models import Room, JoinRequest, User, Notification
-from recblab.storage import (
+from blabhear.models import Room, JoinRequest, User, Notification
+from blabhear.storage import (
     generate_upload_signed_url_v4,
     audio_file_exists,
     generate_download_signed_url_v4,
