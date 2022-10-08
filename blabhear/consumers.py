@@ -5,11 +5,6 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from blabhear.models import Room, JoinRequest, User, Notification
-from blabhear.storage import (
-    generate_upload_signed_url_v4,
-    audio_file_exists,
-    generate_download_signed_url_v4,
-)
 
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
@@ -27,23 +22,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         was_added = False
         if user not in room.members.all():
             room.members.add(user)
-            if room.audio_file_creator:
-                room_audio_creator = User.objects.filter(
-                    username=room.audio_file_creator
-                ).first()
-                room_audio_timestamp = room.audio_file_created_at
-                notification, created = Notification.objects.update_or_create(
-                    user=user,
-                    room=room,
-                    defaults={
-                        "audio_uploaded_by": room_audio_creator,
-                    },
-                )
-                if created:
-                    notification.timestamp = room_audio_timestamp
-                    notification.save()
-            else:
-                Notification.objects.get_or_create(user=user, room=room)
+            Notification.objects.get_or_create(user=user, room=room)
             was_added = True
         member_display_names, member_usernames = self.get_all_room_members()
         return member_display_names, was_added
@@ -73,46 +52,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     def approve_room_member(self, username):
         user = User.objects.get(username=username)
         self.room.members.add(user)
-        if self.room.audio_file_creator:
-            room_audio_creator = User.objects.filter(
-                username=self.room.audio_file_creator
-            ).first()
-            room_audio_timestamp = self.room.audio_file_created_at
-            notification, created = Notification.objects.update_or_create(
-                user=user,
-                room=self.room,
-                defaults={
-                    "audio_uploaded_by": room_audio_creator,
-                },
-            )
-            if created:
-                notification.timestamp = room_audio_timestamp
-                notification.save()
-        else:
-            Notification.objects.get_or_create(user=user, room=self.room)
+        Notification.objects.get_or_create(user=user, room=self.room)
         self.room.joinrequest_set.filter(user=user).delete()
 
     def approve_all_room_members(self):
         added_users = []
         for request in self.room.joinrequest_set.all():
             self.room.members.add(request.user)
-            if self.room.audio_file_creator:
-                room_audio_creator = User.objects.filter(
-                    username=self.room.audio_file_creator
-                ).first()
-                room_audio_timestamp = self.room.audio_file_created_at
-                notification, created = Notification.objects.update_or_create(
-                    user=request.user,
-                    room=self.room,
-                    defaults={
-                        "audio_uploaded_by": room_audio_creator,
-                    },
-                )
-                if created:
-                    notification.timestamp = room_audio_timestamp
-                    notification.save()
-            else:
-                Notification.objects.get_or_create(user=request.user, room=self.room)
+            Notification.objects.get_or_create(user=request.user, room=self.room)
             added_users.append(request.user.username)
         self.room.joinrequest_set.all().delete()
         return added_users
@@ -124,9 +71,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             str(user["username"]) for user in self.room.members.all().values()
         ]
         return new_name, users_to_refresh
-
-    def get_audio_file_creator(self):
-        return self.room.audio_file_creator
 
     def read_unread_room_notification(self):
         room_notification = Notification.objects.get(user=self.user, room=self.room)
@@ -173,17 +117,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     "type": "refresh_notifications",
                 },
             )
-            file_creator = await database_sync_to_async(self.get_audio_file_creator)()
-            if (
-                file_creator
-                and file_creator != self.user.username
-                and audio_file_exists(f"{self.room.id}/{file_creator}")
-            ):
-                url = generate_download_signed_url_v4(f"{self.room.id}/{file_creator}")
-                await self.channel_layer.send(
-                    self.channel_name,
-                    {"type": "download_url", "download_url": url},
-                )
             await self.fetch_display_name()
             await self.fetch_privacy()
             await self.fetch_join_requests()
@@ -213,15 +146,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.approve_all_users())
             if content.get("command") == "update_display_name":
                 asyncio.create_task(self.update_display_name(content))
-            if content.get("command") == "fetch_upload_url":
-                asyncio.create_task(self.fetch_upload_url())
-
-    async def fetch_upload_url(self):
-        url = generate_upload_signed_url_v4(f"{self.room.id}/{self.user.username}")
-        await self.channel_layer.send(
-            self.channel_name,
-            {"type": "upload_url", "upload_url": url},
-        )
 
     async def update_display_name(self, input_payload):
         if len(input_payload["name"].strip()) > 0:
@@ -396,29 +320,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         # Send message to WebSocket
         await self.send_json(event)
 
-    async def upload_url(self, event):
-        # Send message to WebSocket
-        await self.send_json(event)
-
-    async def download_url(self, event):
-        # Send message to WebSocket
-        await self.send_json(event)
-
-    async def upload_successful(self, event):
-        await database_sync_to_async(self.read_unread_room_notification)()
-        await self.channel_layer.group_send(
-            self.user.username,
-            {
-                "type": "refresh_notifications",
-            },
-        )
-        if event["uploader"] != self.user.username:
-            url = generate_download_signed_url_v4(f"{self.room.id}/{event['uploader']}")
-            await self.channel_layer.send(
-                self.channel_name,
-                {"type": "download_url", "download_url": url},
-            )
-
 
 class UserConsumer(AsyncJsonWebsocketConsumer):
     def get_user_notifications(self):
@@ -426,7 +327,6 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             self.user.notification_set.values(
                 "room",
                 "room__display_name",
-                "audio_uploaded_by__display_name",
                 "read",
                 "timestamp",
             )
@@ -458,15 +358,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             for request in self.user.joinrequest_set.all().values()
         ]
         rooms_to_refresh = set(rooms_to_refresh)
-        users_to_refresh = set(
-            [
-                str(user["user__username"])
-                for user in Notification.objects.filter(audio_uploaded_by=self.user)
-                .values("user__username")
-                .order_by()
-            ]
-        )
-        return new_name, rooms_to_refresh, users_to_refresh
+        return new_name, rooms_to_refresh
 
     async def connect(self):
         self.username = str(self.scope["url_route"]["kwargs"]["user_id"])
@@ -501,24 +393,13 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
 
     async def update_display_name(self, input_payload):
         if len(input_payload["name"].strip()) > 0:
-            (
-                display_name,
-                rooms_to_refresh,
-                users_to_refresh,
-            ) = await database_sync_to_async(self.change_display_name)(
-                input_payload["name"]
-            )
+            display_name, rooms_to_refresh = await database_sync_to_async(
+                self.change_display_name
+            )(input_payload["name"])
             for room in rooms_to_refresh:
                 await self.channel_layer.group_send(room, {"type": "refresh_members"})
                 await self.channel_layer.group_send(
                     room, {"type": "refresh_join_requests"}
-                )
-            for username in users_to_refresh:
-                await self.channel_layer.group_send(
-                    username,
-                    {
-                        "type": "refresh_notifications",
-                    },
                 )
             await self.channel_layer.group_send(
                 self.username,

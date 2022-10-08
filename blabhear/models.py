@@ -24,21 +24,10 @@ class Room(models.Model):
     members = models.ManyToManyField(User)
     private = models.BooleanField(blank=False, default=False)
     display_name = models.CharField(max_length=150, blank=True)
-    audio_file_creator = models.CharField(default="", max_length=150, blank=True)
-    audio_file_created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
         if not self.display_name:
             self.display_name = self.id
-        room = Room.objects.filter(id=self.id).first()
-        if room:
-            room_members = set(
-                [user["username"] for user in room.members.all().values("username")]
-            )
-        else:
-            room_members = set()
-        if self.audio_file_creator and self.audio_file_creator not in room_members:
-            raise ValidationError(_(f"File creator must have username of room member."))
         super(Room, self).save(*args, **kwargs)
 
 
@@ -62,9 +51,6 @@ class Notification(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     room = models.ForeignKey(Room, on_delete=models.CASCADE)
     timestamp = models.DateTimeField(auto_now_add=True)
-    audio_uploaded_by = models.ForeignKey(
-        User, null=True, related_name="user_uploading_audio", on_delete=models.CASCADE
-    )
     read = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
