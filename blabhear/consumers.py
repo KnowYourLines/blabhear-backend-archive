@@ -3,6 +3,7 @@ from operator import itemgetter
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.core.paginator import Paginator, EmptyPage
 
 from blabhear.models import Room, JoinRequest, User, Notification, Message
 
@@ -96,14 +97,21 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             "creator__username": new_message.creator.username,
         }
 
-    def fetch_messages(self):
+    def fetch_messages(self, *, page):
         try:
-            messages = self.room.message_set.order_by("-created_at").values(
-                "creator__display_name", "content", "creator__username"
-            )[:10][::-1]
-            return list(messages)
+            messages = Paginator(
+                self.room.message_set.order_by("-created_at").values(
+                    "creator__display_name", "content", "creator__username"
+                ),
+                10,
+            )
+            message_page = messages.page(page)
+            message_page_display_order = message_page.object_list[::-1]
+            return message_page_display_order, page
         except Message.DoesNotExist:
             pass
+        except EmptyPage:
+            return [], page
 
     async def connect(self):
         await self.accept()
@@ -144,7 +152,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     "type": "refresh_notifications",
                 },
             )
-            await self.get_room_messages()
+            await self.get_room_messages(page=1)
             await self.fetch_display_name()
             await self.fetch_privacy()
             await self.fetch_join_requests()
@@ -177,13 +185,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             if content.get("command") == "send_message":
                 asyncio.create_task(self.send_message(content))
             if content.get("command") == "fetch_messages":
-                asyncio.create_task(self.get_room_messages())
+                asyncio.create_task(self.get_room_messages(page=content["page"]))
 
-    async def get_room_messages(self):
-        messages = await database_sync_to_async(self.fetch_messages)()
+    async def get_room_messages(self, *, page):
+        messages, page_number = await database_sync_to_async(self.fetch_messages)(
+            page=page
+        )
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "messages", "messages": messages},
+            {"type": "messages", "messages": messages, "page": page_number},
         )
 
     async def send_message(self, input_payload):
