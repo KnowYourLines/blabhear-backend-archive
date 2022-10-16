@@ -4,7 +4,7 @@ from operator import itemgetter
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from blabhear.models import Room, JoinRequest, User, Notification
+from blabhear.models import Room, JoinRequest, User, Notification, Message
 
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
@@ -78,6 +78,24 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             room_notification.read = True
             room_notification.save()
 
+    def create_new_message_notification_for_all_room_members(self, new_message):
+        for user in self.room.members.all():
+            notification = Notification.objects.get(user=user, room=self.room)
+            notification.message = new_message
+            notification.read = user == self.user
+            notification.save()
+
+    def create_new_message(self, message):
+        new_message = Message.objects.create(
+            creator=self.user, room=self.room, content=message
+        )
+        self.create_new_message_notification_for_all_room_members(new_message)
+        return {
+            "creator": new_message.creator.display_name,
+            "content": new_message.content,
+            "creator_user_id": new_message.creator.username
+        }
+
     async def connect(self):
         await self.accept()
 
@@ -146,6 +164,28 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.approve_all_users())
             if content.get("command") == "update_display_name":
                 asyncio.create_task(self.update_display_name(content))
+            if content.get("command") == "send_message":
+                asyncio.create_task(self.send_message(content))
+
+    async def send_message(self, input_payload):
+        message = input_payload["message"]
+        if len(message.strip()) > 0:
+            new_message = await database_sync_to_async(self.create_new_message)(message)
+            await self.channel_layer.group_send(
+                self.room_id,
+                {"type": "new_message", "new_message": new_message},
+            )
+            (
+                room_member_display_names,
+                room_member_usernames,
+            ) = await database_sync_to_async(self.get_all_room_members)()
+            for username in room_member_usernames:
+                await self.channel_layer.group_send(
+                    username,
+                    {
+                        "type": "refresh_notifications",
+                    },
+                )
 
     async def update_display_name(self, input_payload):
         if len(input_payload["name"].strip()) > 0:
@@ -280,6 +320,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             {"type": "refresh_privacy"},
         )
 
+    async def new_message(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
     async def refresh_join_requests(self, event):
         # Send message to WebSocket
         await self.send_json(event)
@@ -329,6 +373,8 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 "room__display_name",
                 "read",
                 "timestamp",
+                "message__creator__display_name",
+                "message__content",
             )
             .order_by("room", "-timestamp")
             .distinct("room")
@@ -358,7 +404,13 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             for request in self.user.joinrequest_set.all().values()
         ]
         rooms_to_refresh = set(rooms_to_refresh)
-        return new_name, rooms_to_refresh
+        users_to_refresh = [
+            str(notification["user__username"])
+            for notification in Notification.objects.filter(
+                message__creator=self.user
+            ).values('user__username')
+        ]
+        return new_name, rooms_to_refresh, users_to_refresh
 
     async def connect(self):
         self.username = str(self.scope["url_route"]["kwargs"]["user_id"])
@@ -393,13 +445,20 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
 
     async def update_display_name(self, input_payload):
         if len(input_payload["name"].strip()) > 0:
-            display_name, rooms_to_refresh = await database_sync_to_async(
+            display_name, rooms_to_refresh, users_to_refresh = await database_sync_to_async(
                 self.change_display_name
             )(input_payload["name"])
             for room in rooms_to_refresh:
                 await self.channel_layer.group_send(room, {"type": "refresh_members"})
                 await self.channel_layer.group_send(
                     room, {"type": "refresh_join_requests"}
+                )
+            for username in users_to_refresh:
+                await self.channel_layer.group_send(
+                    username,
+                    {
+                        "type": "refresh_notifications",
+                    },
                 )
             await self.channel_layer.group_send(
                 self.username,

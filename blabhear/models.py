@@ -31,6 +31,14 @@ class Room(models.Model):
         super(Room, self).save(*args, **kwargs)
 
 
+class Message(models.Model):
+    id = models.AutoField(primary_key=True)
+    creator = models.ForeignKey(User, on_delete=models.CASCADE)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class JoinRequest(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -50,7 +58,10 @@ class Notification(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     room = models.ForeignKey(Room, on_delete=models.CASCADE)
-    timestamp = models.DateTimeField(auto_now_add=True)
+    timestamp = models.DateTimeField(auto_now=True)
+    message = models.ForeignKey(
+        Message, blank=True, null=True, on_delete=models.SET_NULL
+    )
     read = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
