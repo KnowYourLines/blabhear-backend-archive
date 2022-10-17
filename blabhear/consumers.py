@@ -95,23 +95,53 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             "creator__display_name": new_message.creator.display_name,
             "content": new_message.content,
             "creator__username": new_message.creator.username,
+            "created_at": new_message.created_at.strftime("%d-%m-%Y %H:%M"),
         }
 
     def fetch_messages(self, *, page):
         try:
             messages = Paginator(
                 self.room.message_set.order_by("-created_at").values(
-                    "creator__display_name", "content", "creator__username"
+                    "creator__display_name",
+                    "content",
+                    "creator__username",
+                    "created_at",
                 ),
                 10,
             )
             message_page = messages.page(page)
             message_page_display_order = message_page.object_list[::-1]
+            for message in message_page_display_order:
+                message["created_at"] = message["created_at"].strftime("%d-%m-%Y %H:%M")
             return message_page_display_order, page
         except Message.DoesNotExist:
             pass
         except EmptyPage:
             return [], page
+
+    def fetch_messages_up_to_page(self, *, page):
+        accumulated_messages = []
+        for page_number in range(1, page + 1):
+            try:
+                messages = Paginator(
+                    self.room.message_set.order_by("-created_at").values(
+                        "creator__display_name",
+                        "content",
+                        "creator__username",
+                        "created_at",
+                    ),
+                    10,
+                )
+                message_page = messages.page(page_number)
+                message_page_display_order = message_page.object_list[::-1]
+                accumulated_messages = message_page_display_order + accumulated_messages
+            except Message.DoesNotExist:
+                break
+            except EmptyPage:
+                break
+        for message in accumulated_messages:
+            message["created_at"] = message["created_at"].strftime("%d-%m-%Y %H:%M")
+        return accumulated_messages, page
 
     async def connect(self):
         await self.accept()
@@ -186,6 +216,19 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.send_message(content))
             if content.get("command") == "fetch_messages":
                 asyncio.create_task(self.get_room_messages(page=content["page"]))
+            if content.get("command") == "fetch_messages_up_to_page":
+                asyncio.create_task(
+                    self.get_room_messages_up_to_page(page=content["page"])
+                )
+
+    async def get_room_messages_up_to_page(self, *, page):
+        messages, page_number = await database_sync_to_async(
+            self.fetch_messages_up_to_page
+        )(page=page)
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "messages", "messages": messages, "page": page_number},
+        )
 
     async def get_room_messages(self, *, page):
         messages, page_number = await database_sync_to_async(self.fetch_messages)(
@@ -357,6 +400,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         # Send message to WebSocket
         await self.send_json(event)
 
+    async def refresh_messages(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
     async def refresh_join_requests(self, event):
         # Send message to WebSocket
         await self.send_json(event)
@@ -416,7 +463,9 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         notifications.sort(key=itemgetter("read"))
         for notification in notifications:
             notification["room"] = str(notification["room"])
-            notification["timestamp"] = str(notification["timestamp"])
+            notification["timestamp"] = notification["timestamp"].strftime(
+                "%d-%m-%Y %H:%M"
+            )
         return notifications
 
     def leave_room(self, room_id):
@@ -490,6 +539,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 await self.channel_layer.group_send(
                     room, {"type": "refresh_join_requests"}
                 )
+                await self.channel_layer.group_send(room, {"type": "refresh_messages"})
             for username in users_to_refresh:
                 await self.channel_layer.group_send(
                     username,
