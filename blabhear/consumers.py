@@ -3,6 +3,7 @@ from operator import itemgetter
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.paginator import Paginator, EmptyPage
 
 from blabhear.models import Room, JoinRequest, User, Notification, Message
@@ -14,7 +15,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         return room
 
     def get_all_room_members(self):
-        members = self.room.members.all().values()
+        room = Room.objects.get(id=self.room_id)
+        members = room.members.all().values()
         member_display_names = [user["display_name"] for user in members]
         member_usernames = [user["username"] for user in members]
         return member_display_names, member_usernames
@@ -29,66 +31,77 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         return member_display_names, was_added
 
     def set_room_privacy(self, private):
-        self.room.private = private
-        self.room.save()
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room.private = private
+        room.save()
 
     def user_not_allowed(self):
-        return self.user not in self.room.members.all() and self.room.private
+        room = Room.objects.get(id=self.room_id)
+        return self.user not in room.members.all() and room.private
 
     def get_all_join_requests(self):
+        room = await database_sync_to_async(self.get_room)(self.room_id)
         all_join_requests = list(
-            self.room.joinrequest_set.order_by("-timestamp").values(
+            room.joinrequest_set.order_by("-timestamp").values(
                 "user", "user__username", "user__display_name"
             )
         )
         return all_join_requests
 
     def get_or_create_new_join_request(self):
-        JoinRequest.objects.get_or_create(user=self.user, room=self.room)
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+        JoinRequest.objects.get_or_create(user=self.user, room=room)
 
     def reject_room_member(self, username):
         user = User.objects.get(username=username)
-        self.room.joinrequest_set.filter(user=user).delete()
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room.joinrequest_set.filter(user=user).delete()
 
     def approve_room_member(self, username):
         user = User.objects.get(username=username)
-        self.room.members.add(user)
-        Notification.objects.get_or_create(user=user, room=self.room)
-        self.room.joinrequest_set.filter(user=user).delete()
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room.members.add(user)
+        Notification.objects.get_or_create(user=user, room=room)
+        room.joinrequest_set.filter(user=user).delete()
 
     def approve_all_room_members(self):
         added_users = []
-        for request in self.room.joinrequest_set.all():
-            self.room.members.add(request.user)
-            Notification.objects.get_or_create(user=request.user, room=self.room)
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+        for request in room.joinrequest_set.all():
+            room.members.add(request.user)
+            Notification.objects.get_or_create(user=request.user, room=room)
             added_users.append(request.user.username)
-        self.room.joinrequest_set.all().delete()
+        room.joinrequest_set.all().delete()
         return added_users
 
     def change_display_name(self, new_name):
-        self.room.display_name = new_name
-        self.room.save()
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room.display_name = new_name
+        room.save()
         users_to_refresh = [
-            str(user["username"]) for user in self.room.members.all().values()
+            str(user["username"]) for user in room.members.all().values()
         ]
         return new_name, users_to_refresh
 
     def read_unread_room_notification(self):
-        room_notification = Notification.objects.get(user=self.user, room=self.room)
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room_notification = Notification.objects.get(user=self.user, room=room)
         if not room_notification.read:
             room_notification.read = True
             room_notification.save()
 
     def create_new_message_notification_for_all_room_members(self, new_message):
-        for user in self.room.members.all():
-            notification = Notification.objects.get(user=user, room=self.room)
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+        for user in room.members.all():
+            notification = Notification.objects.get(user=user, room=room)
             notification.message = new_message
             notification.read = user == self.user
             notification.save()
 
     def create_new_message(self, message):
+        room = await database_sync_to_async(self.get_room)(self.room_id)
         new_message = Message.objects.create(
-            creator=self.user, room=self.room, content=message
+            creator=self.user, room=room, content=message
         )
         self.create_new_message_notification_for_all_room_members(new_message)
         return {
@@ -99,9 +112,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         }
 
     def fetch_messages(self, *, page):
+        room = await database_sync_to_async(self.get_room)(self.room_id)
         try:
             messages = Paginator(
-                self.room.message_set.order_by("-created_at").values(
+                room.message_set.order_by("-created_at").values(
                     "creator__display_name",
                     "content",
                     "creator__username",
@@ -114,17 +128,18 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             for message in message_page_display_order:
                 message["created_at"] = message["created_at"].strftime("%d-%m-%Y %H:%M")
             return message_page_display_order, page
-        except Message.DoesNotExist:
+        except ObjectDoesNotExist:
             pass
         except EmptyPage:
             return [], page
 
     def fetch_messages_up_to_page(self, *, page):
         accumulated_messages = []
+        room = await database_sync_to_async(self.get_room)(self.room_id)
         for page_number in range(1, page + 1):
             try:
                 messages = Paginator(
-                    self.room.message_set.order_by("-created_at").values(
+                    room.message_set.order_by("-created_at").values(
                         "creator__display_name",
                         "content",
                         "creator__username",
@@ -135,7 +150,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 message_page = messages.page(page_number)
                 message_page_display_order = message_page.object_list[::-1]
                 accumulated_messages = message_page_display_order + accumulated_messages
-            except Message.DoesNotExist:
+            except ObjectDoesNotExist:
                 break
             except EmptyPage:
                 break
@@ -147,10 +162,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.accept()
 
         self.room_id = self.scope["url_route"]["kwargs"]["room_id"]
-        self.room = await database_sync_to_async(self.get_room)(self.room_id)
         self.user = self.scope["user"]
 
         await self.channel_layer.group_add(self.room_id, self.channel_name)
+        room = await database_sync_to_async(self.get_room)(self.room_id)
         user_not_allowed = await database_sync_to_async(self.user_not_allowed)()
         if user_not_allowed:
             await self.channel_layer.send(
@@ -164,7 +179,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             )
         else:
             members, was_added = await database_sync_to_async(self.add_user_to_room)(
-                self.user, self.room
+                self.user, room
             )
             if was_added:
                 await self.channel_layer.group_send(
@@ -188,7 +203,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.fetch_join_requests()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(str(self.room.id), self.channel_name)
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+        await self.channel_layer.group_discard(str(room.id), self.channel_name)
 
     async def receive_json(self, content, **kwargs):
         user_not_allowed = await database_sync_to_async(self.user_not_allowed)()
@@ -279,7 +295,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.fetch_display_name()
 
     async def fetch_display_name(self):
-        display_name = self.room.display_name
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+        display_name = room.display_name
         await self.channel_layer.send(
             self.channel_name,
             {"type": "display_name", "display_name": display_name},
@@ -365,10 +382,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             self.channel_name,
             {"type": "members", "members": member_display_names},
         )
-        if self.user.username not in member_usernames and not self.room.private:
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+        if self.user.username not in member_usernames and not room.private:
             await self.channel_layer.send(
                 self.channel_name,
-                {"type": "left_public_room"},
+                {"type": "left_room"},
             )
 
     async def fetch_privacy(self):
@@ -436,7 +454,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         # Send message to WebSocket
         await self.send_json(event)
 
-    async def left_public_room(self, event):
+    async def left_room(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
