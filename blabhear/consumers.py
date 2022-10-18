@@ -31,7 +31,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         return member_display_names, was_added
 
     def set_room_privacy(self, private):
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         room.private = private
         room.save()
 
@@ -40,7 +40,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         return self.user not in room.members.all() and room.private
 
     def get_all_join_requests(self):
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         all_join_requests = list(
             room.joinrequest_set.order_by("-timestamp").values(
                 "user", "user__username", "user__display_name"
@@ -49,24 +49,24 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         return all_join_requests
 
     def get_or_create_new_join_request(self):
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         JoinRequest.objects.get_or_create(user=self.user, room=room)
 
     def reject_room_member(self, username):
         user = User.objects.get(username=username)
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         room.joinrequest_set.filter(user=user).delete()
 
     def approve_room_member(self, username):
         user = User.objects.get(username=username)
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         room.members.add(user)
         Notification.objects.get_or_create(user=user, room=room)
         room.joinrequest_set.filter(user=user).delete()
 
     def approve_all_room_members(self):
         added_users = []
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         for request in room.joinrequest_set.all():
             room.members.add(request.user)
             Notification.objects.get_or_create(user=request.user, room=room)
@@ -75,7 +75,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         return added_users
 
     def change_display_name(self, new_name):
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         room.display_name = new_name
         room.save()
         users_to_refresh = [
@@ -84,14 +84,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         return new_name, users_to_refresh
 
     def read_unread_room_notification(self):
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         room_notification = Notification.objects.get(user=self.user, room=room)
         if not room_notification.read:
             room_notification.read = True
             room_notification.save()
 
     def create_new_message_notification_for_all_room_members(self, new_message):
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         for user in room.members.all():
             notification = Notification.objects.get(user=user, room=room)
             notification.message = new_message
@@ -99,7 +99,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             notification.save()
 
     def create_new_message(self, message):
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         new_message = Message.objects.create(
             creator=self.user, room=room, content=message
         )
@@ -112,7 +112,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         }
 
     def fetch_messages(self, *, page):
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         try:
             messages = Paginator(
                 room.message_set.order_by("-created_at").values(
@@ -135,7 +135,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     def fetch_messages_up_to_page(self, *, page):
         accumulated_messages = []
-        room = await database_sync_to_async(self.get_room)(self.room_id)
+        room = self.get_room(self.room_id)
         for page_number in range(1, page + 1):
             try:
                 messages = Paginator(
@@ -311,6 +311,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     "type": "refresh_notifications",
                 },
             )
+            await self.channel_layer.group_send(
+                self.room_id,
+                {"type": "refresh_messages", "username": username},
+            )
         await self.channel_layer.group_send(
             self.room_id,
             {"type": "refresh_join_requests"},
@@ -349,6 +353,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             {
                 "type": "refresh_notifications",
             },
+        )
+
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "refresh_messages", "username": input_payload["username"]},
         )
         await self.channel_layer.group_send(
             self.room_id,
@@ -419,8 +428,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def refresh_messages(self, event):
-        # Send message to WebSocket
-        await self.send_json(event)
+        if event.get("username"):
+            if self.user.username == event.get("username"):
+                await self.send_json(event)
+            else:
+                pass
+        else:
+            await self.send_json(event)
 
     async def refresh_join_requests(self, event):
         # Send message to WebSocket
