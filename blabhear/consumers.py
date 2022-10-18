@@ -236,6 +236,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(
                     self.get_room_messages_up_to_page(page=content["page"])
                 )
+            if content.get("command") == "fetch_display_name":
+                asyncio.create_task(self.fetch_display_name())
 
     async def get_room_messages_up_to_page(self, *, page):
         messages, page_number = await database_sync_to_async(
@@ -315,6 +317,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 self.room_id,
                 {"type": "refresh_messages", "username": username},
             )
+            await self.channel_layer.group_send(
+                self.room_id,
+                {"type": "refresh_display_name", "username": username},
+            )
         await self.channel_layer.group_send(
             self.room_id,
             {"type": "refresh_join_requests"},
@@ -358,6 +364,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_send(
             self.room_id,
             {"type": "refresh_messages", "username": input_payload["username"]},
+        )
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "refresh_display_name", "username": input_payload["username"]},
         )
         await self.channel_layer.group_send(
             self.room_id,
@@ -428,6 +438,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def refresh_messages(self, event):
+        if event.get("username"):
+            if self.user.username == event.get("username"):
+                await self.send_json(event)
+            else:
+                pass
+        else:
+            await self.send_json(event)
+
+    async def refresh_display_name(self, event):
         if event.get("username"):
             if self.user.username == event.get("username"):
                 await self.send_json(event)
