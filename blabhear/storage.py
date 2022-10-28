@@ -1,3 +1,4 @@
+import datetime
 import os
 
 from google.cloud import storage
@@ -25,24 +26,13 @@ storage_client = storage.Client(
 
 
 def generate_upload_signed_url_v4(blob_name):
-    bucket = storage_client.bucket(os.environ.get("GCP_STORAGE_BUCKET"))
+    bucket = storage_client.bucket(os.environ.get("GCP_UPLOAD_BUCKET"))
     blob = bucket.blob(blob_name)
 
     url = blob.generate_signed_url(
         version="v4",
+        expiration=datetime.timedelta(minutes=15),
         method="PUT",
         content_type="application/ogg",
-    )
-    return url
-
-
-def generate_download_signed_url_v4(blob_name):
-    bucket = storage_client.bucket(os.environ.get("GCP_STORAGE_BUCKET"))
-    blob = bucket.blob(blob_name)
-
-    url = blob.generate_signed_url(
-        version="v4",
-        expiration=None,
-        method="GET",
     )
     return url

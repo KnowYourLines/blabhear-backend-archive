@@ -245,7 +245,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.fetch_upload_url())
 
     async def fetch_upload_url(self):
-        url = generate_upload_signed_url_v4(uuid.uuid4())
+        url = generate_upload_signed_url_v4(str(uuid.uuid4()))
         await self.channel_layer.send(
             self.channel_name,
             {"type": "upload_url", "upload_url": url},
