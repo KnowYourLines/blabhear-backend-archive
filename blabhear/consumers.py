@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from operator import itemgetter
 
 from channels.db import database_sync_to_async
@@ -7,6 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.paginator import Paginator, EmptyPage
 
 from blabhear.models import Room, JoinRequest, User, Notification, Message
+from blabhear.storage import generate_upload_signed_url_v4
 
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
@@ -201,6 +203,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.fetch_display_name()
             await self.fetch_privacy()
             await self.fetch_join_requests()
+            await self.fetch_upload_url()
 
     async def disconnect(self, close_code):
         room = await database_sync_to_async(self.get_room)(self.room_id)
@@ -238,6 +241,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 )
             if content.get("command") == "fetch_display_name":
                 asyncio.create_task(self.fetch_display_name())
+            if content.get("command") == "fetch_upload_url":
+                asyncio.create_task(self.fetch_upload_url())
+
+    async def fetch_upload_url(self):
+        url = generate_upload_signed_url_v4(uuid.uuid4())
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "upload_url", "upload_url": url},
+        )
 
     async def get_room_messages_up_to_page(self, *, page):
         messages, page_number = await database_sync_to_async(
