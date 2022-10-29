@@ -25,9 +25,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     def add_user_to_room(self, user, room):
         was_added = False
+        latest_message = room.message_set.order_by("-created_at").first()
         if user not in room.members.all():
             room.members.add(user)
-            Notification.objects.get_or_create(user=user, room=room)
+            Notification.objects.get_or_create(
+                user=user, room=room, defaults={"message": latest_message}
+            )
             was_added = True
         member_display_names, member_usernames = self.get_all_room_members()
         return member_display_names, was_added
@@ -63,15 +66,21 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         user = User.objects.get(username=username)
         room = self.get_room(self.room_id)
         room.members.add(user)
-        Notification.objects.get_or_create(user=user, room=room)
+        latest_message = room.message_set.order_by("-created_at").first()
+        Notification.objects.get_or_create(
+            user=user, room=room, defaults={"message": latest_message}
+        )
         room.joinrequest_set.filter(user=user).delete()
 
     def approve_all_room_members(self):
         added_users = []
         room = self.get_room(self.room_id)
+        latest_message = room.message_set.order_by("-created_at").first()
         for request in room.joinrequest_set.all():
             room.members.add(request.user)
-            Notification.objects.get_or_create(user=request.user, room=room)
+            Notification.objects.get_or_create(
+                user=request.user, room=room, defaults={"message": latest_message}
+            )
             added_users.append(request.user.username)
         room.joinrequest_set.all().delete()
         return added_users
@@ -111,7 +120,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             "content": new_message.content,
             "creator__username": new_message.creator.username,
             "created_at": new_message.created_at.strftime("%d-%m-%Y %H:%M"),
-            "filename": str(new_message.filename)
+            "filename": str(new_message.filename),
         }
 
     def fetch_messages(self, *, page):
@@ -123,7 +132,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     "content",
                     "creator__username",
                     "created_at",
-                    "filename"
+                    "filename",
                 ),
                 10,
             )
@@ -149,7 +158,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                         "content",
                         "creator__username",
                         "created_at",
-                        "filename"
+                        "filename",
                     ),
                     10,
                 )
