@@ -203,7 +203,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.fetch_display_name()
             await self.fetch_privacy()
             await self.fetch_join_requests()
-            await self.fetch_upload_url()
 
     async def disconnect(self, close_code):
         room = await database_sync_to_async(self.get_room)(self.room_id)
@@ -440,6 +439,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             self.room_id,
             {"type": "refresh_privacy"},
         )
+
+    async def upload_url(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
 
     async def messages(self, event):
         # Send message to WebSocket
