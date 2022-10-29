@@ -79,6 +79,8 @@ services:
         sync: false
       - key: FIREBASE_CLIENT_CERT_URL
         sync: false
+      - key: GCP_UPLOAD_BUCKET
+        sync: false
 
 databases:
   - name: blabhear-db
