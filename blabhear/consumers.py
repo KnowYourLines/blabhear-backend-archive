@@ -100,10 +100,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             notification.read = user == self.user
             notification.save()
 
-    def create_new_message(self, message):
+    def create_new_message(self, message, filename):
         room = self.get_room(self.room_id)
         new_message = Message.objects.create(
-            creator=self.user, room=room, content=message
+            creator=self.user, room=room, content=message, filename=filename
         )
         self.create_new_message_notification_for_all_room_members(new_message)
         return {
@@ -111,6 +111,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             "content": new_message.content,
             "creator__username": new_message.creator.username,
             "created_at": new_message.created_at.strftime("%d-%m-%Y %H:%M"),
+            "filename": str(new_message.filename)
         }
 
     def fetch_messages(self, *, page):
@@ -122,6 +123,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     "content",
                     "creator__username",
                     "created_at",
+                    "filename"
                 ),
                 10,
             )
@@ -129,6 +131,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             message_page_display_order = message_page.object_list[::-1]
             for message in message_page_display_order:
                 message["created_at"] = message["created_at"].strftime("%d-%m-%Y %H:%M")
+                message["filename"] = str(message["filename"])
             return message_page_display_order, page
         except ObjectDoesNotExist:
             pass
@@ -146,6 +149,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                         "content",
                         "creator__username",
                         "created_at",
+                        "filename"
                     ),
                     10,
                 )
@@ -158,6 +162,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 break
         for message in accumulated_messages:
             message["created_at"] = message["created_at"].strftime("%d-%m-%Y %H:%M")
+            message["filename"] = str(message["filename"])
         return accumulated_messages, page
 
     async def connect(self):
@@ -244,10 +249,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.fetch_upload_url())
 
     async def fetch_upload_url(self):
-        url = generate_upload_signed_url_v4(str(uuid.uuid4()))
+        filename = str(uuid.uuid4())
+        url = generate_upload_signed_url_v4(filename)
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "upload_url", "upload_url": url},
+            {"type": "upload_url", "upload_url": url, "filename": filename},
         )
 
     async def get_room_messages_up_to_page(self, *, page):
@@ -270,8 +276,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def send_message(self, input_payload):
         message = input_payload["message"]
+        filename = input_payload["filename"]
         if len(message.strip()) > 0:
-            new_message = await database_sync_to_async(self.create_new_message)(message)
+            new_message = await database_sync_to_async(self.create_new_message)(
+                message, filename
+            )
             await self.channel_layer.group_send(
                 self.room_id,
                 {"type": "new_message", "new_message": new_message},

@@ -37,6 +37,7 @@ class Message(models.Model):
     room = models.ForeignKey(Room, on_delete=models.CASCADE)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    filename = models.UUIDField(null=True, default=None)
 
 
 class JoinRequest(models.Model):
