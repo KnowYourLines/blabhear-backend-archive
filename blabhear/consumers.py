@@ -256,6 +256,17 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.fetch_display_name())
             if content.get("command") == "fetch_upload_url":
                 asyncio.create_task(self.fetch_upload_url())
+            if content.get("command") == "read_room_notification":
+                asyncio.create_task(self.read_room_notification())
+
+    async def read_room_notification(self):
+        await database_sync_to_async(self.read_unread_room_notification)()
+        await self.channel_layer.group_send(
+            self.user.username,
+            {
+                "type": "refresh_notifications",
+            },
+        )
 
     async def fetch_upload_url(self):
         filename = str(uuid.uuid4())
@@ -305,6 +316,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                         "type": "refresh_notifications",
                     },
                 )
+            await self.channel_layer.group_send(
+                self.room_id,
+                {"type": "room_notified"},
+            )
 
     async def update_display_name(self, input_payload):
         if len(input_payload["name"].strip()) > 0:
@@ -489,6 +504,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.send_json(event)
 
     async def refresh_join_requests(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def room_notified(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
