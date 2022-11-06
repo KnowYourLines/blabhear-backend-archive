@@ -8,13 +8,10 @@ from django.utils.translation import gettext_lazy as _
 
 class User(AbstractUser):
     id = models.AutoField(primary_key=True)
-    phone_number = models.CharField(max_length=17, blank=True)
     display_name = models.CharField(max_length=150, blank=True)
 
     def save(self, *args, **kwargs):
-        if not self.display_name and self.phone_number:
-            self.display_name = self.phone_number
-        elif not self.display_name and not self.phone_number:
+        if not self.display_name:
             self.display_name = self.username
         super(User, self).save(*args, **kwargs)
 

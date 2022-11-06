@@ -47,9 +47,6 @@ def get_user(token):
 
     user, created = User.objects.update_or_create(
         username=uid,
-        defaults={
-            "phone_number": decoded_token.get("phone_number") or "",
-        },
     )
     return user
 
