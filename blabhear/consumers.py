@@ -109,10 +109,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             notification.read = user == self.user
             notification.save()
 
-    def create_new_message(self, message, filename):
+    def create_new_message(self, filename):
         room = self.get_room(self.room_id)
         new_message = Message.objects.create(
-            creator=self.user, room=room, content=message, filename=filename
+            creator=self.user, room=room, filename=filename
         )
         self.create_new_message_notification_for_all_room_members(new_message)
         return {
@@ -295,11 +295,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def send_message(self, input_payload):
-        message = input_payload["message"]
         filename = input_payload["filename"]
-        if len(message.strip()) > 0:
+        if len(filename.strip()) > 0:
             new_message = await database_sync_to_async(self.create_new_message)(
-                message, filename
+                filename
             )
             await self.channel_layer.group_send(
                 self.room_id,

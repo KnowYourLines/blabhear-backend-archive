@@ -32,9 +32,9 @@ class Message(models.Model):
     id = models.AutoField(primary_key=True)
     creator = models.ForeignKey(User, on_delete=models.CASCADE)
     room = models.ForeignKey(Room, on_delete=models.CASCADE)
-    content = models.TextField()
+    content = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    filename = models.UUIDField(null=True, default=None)
+    filename = models.UUIDField(null=False)
 
 
 class JoinRequest(models.Model):
