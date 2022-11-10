@@ -1,14 +1,18 @@
 import asyncio
+import os
 import uuid
 from operator import itemgetter
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from deepgram import Deepgram
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.paginator import Paginator, EmptyPage
 
 from blabhear.models import Room, JoinRequest, User, Notification, Message
 from blabhear.storage import generate_upload_signed_url_v4
+
+DEEPGRAM_CLIENT = Deepgram(os.environ.get("DEEPGRAM_API_KEY"))
 
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
@@ -109,10 +113,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             notification.read = user == self.user
             notification.save()
 
-    def create_new_message(self, filename):
+    def create_new_message(self, transcript, filename):
         room = self.get_room(self.room_id)
         new_message = Message.objects.create(
-            creator=self.user, room=room, filename=filename
+            creator=self.user, room=room, content=transcript, filename=filename
         )
         self.create_new_message_notification_for_all_room_members(new_message)
         return {
@@ -297,8 +301,21 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def send_message(self, input_payload):
         filename = input_payload["filename"]
         if len(filename.strip()) > 0:
+            source = {
+                "url": f"https://storage.googleapis.com/blabhear-uploads/{filename}"
+            }
+            options = {
+                "punctuate": True,
+                "model": "general",
+                "detect_language": True,
+                "tier": "enhanced",
+            }
+            response = await DEEPGRAM_CLIENT.transcription.prerecorded(source, options)
+            transcript = response["results"]["channels"][0]["alternatives"][0][
+                "transcript"
+            ]
             new_message = await database_sync_to_async(self.create_new_message)(
-                filename
+                transcript, filename
             )
             await self.channel_layer.group_send(
                 self.room_id,

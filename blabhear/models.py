@@ -32,7 +32,7 @@ class Message(models.Model):
     id = models.AutoField(primary_key=True)
     creator = models.ForeignKey(User, on_delete=models.CASCADE)
     room = models.ForeignKey(Room, on_delete=models.CASCADE)
-    content = models.TextField(null=True, blank=True)
+    content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     filename = models.UUIDField(null=False)
 
