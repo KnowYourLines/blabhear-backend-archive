@@ -81,6 +81,8 @@ services:
         sync: false
       - key: GCP_UPLOAD_BUCKET
         sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
 
 databases:
   - name: blabhear-db

@@ -5,3 +5,4 @@ channels_redis
 psycopg2>=2.8
 dj-database-url
 firebase-admin
+deepgram-sdk

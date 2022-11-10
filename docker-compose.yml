@@ -34,3 +34,4 @@ services:
       - FIREBASE_CLIENT_ID=
       - FIREBASE_CLIENT_CERT_URL=
       - GCP_UPLOAD_BUCKET=
+      - DEEPGRAM_API_KEY=
