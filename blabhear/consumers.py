@@ -127,6 +127,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             "filename": str(new_message.filename),
         }
 
+    def edit_message_content(self, filename, new_content):
+        message = Message.objects.get(
+            filename=filename
+        )
+        if message.creator == self.user:
+            message.content = new_content
+            message.save()
+        notifications_with_message = Notification.objects.filter(message=message)
+        return [notification['user__username'] for notification in notifications_with_message.values('user__username')]
+
     def fetch_messages(self, *, page):
         room = self.get_room(self.room_id)
         try:
@@ -262,6 +272,26 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.fetch_upload_url())
             if content.get("command") == "read_room_notification":
                 asyncio.create_task(self.read_room_notification())
+            if content.get("command") == "edit_message":
+                asyncio.create_task(self.edit_message(content))
+
+    async def edit_message(self, payload):
+        users_to_refresh = await database_sync_to_async(self.edit_message_content)(
+            payload["filename"], payload["edited_message"]
+        )
+        await self.channel_layer.group_send(
+            self.room_id,
+            {
+                "type": "refresh_messages",
+            },
+        )
+        for username in users_to_refresh:
+            await self.channel_layer.group_send(
+                username,
+                {
+                    "type": "refresh_notifications",
+                },
+            )
 
     async def read_room_notification(self):
         await database_sync_to_async(self.read_unread_room_notification)()
