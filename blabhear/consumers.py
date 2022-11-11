@@ -24,8 +24,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         return room
 
     def get_all_room_members(self):
-        room = Room.objects.get(id=self.room_id)
-        members = room.members.all().values()
+        room = Room.objects.filter(id=self.room_id)
+        if room.exists():
+            room = room.first()
+            members = room.members.all().values()
+        else:
+            members = []
         member_display_names = [user["display_name"] for user in members]
         member_usernames = [user["username"] for user in members]
         return member_display_names, member_usernames
@@ -48,8 +52,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         room.save()
 
     def user_not_allowed(self):
-        room = Room.objects.get(id=self.room_id)
-        return self.user not in room.members.all() and room.private
+        room = Room.objects.filter(id=self.room_id)
+        if room.exists():
+            room = room.first()
+            return self.user not in room.members.all() and room.private
+        else:
+            return False
 
     def get_all_join_requests(self):
         room = self.get_room(self.room_id)

@@ -8,6 +8,7 @@ from django.utils.translation import gettext_lazy as _
 
 class User(AbstractUser):
     id = models.AutoField(primary_key=True)
+    phone_number = models.CharField(max_length=150, blank=True)
     display_name = models.CharField(max_length=150, blank=True)
 
     def save(self, *args, **kwargs):
