@@ -10,7 +10,10 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.paginator import Paginator, EmptyPage
 
 from blabhear.models import Room, JoinRequest, User, Notification, Message
-from blabhear.storage import generate_upload_signed_url_v4
+from blabhear.storage import (
+    generate_upload_signed_url_v4,
+    generate_download_signed_url_v4,
+)
 
 DEEPGRAM_CLIENT = Deepgram(os.environ.get("DEEPGRAM_API_KEY"))
 
@@ -125,17 +128,19 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             "creator__username": new_message.creator.username,
             "created_at": new_message.created_at.strftime("%d-%m-%Y %H:%M"),
             "filename": str(new_message.filename),
+            "download": generate_download_signed_url_v4(str(new_message.filename)),
         }
 
     def edit_message_content(self, filename, new_content):
-        message = Message.objects.get(
-            filename=filename
-        )
+        message = Message.objects.get(filename=filename)
         if message.creator == self.user:
             message.content = new_content
             message.save()
         notifications_with_message = Notification.objects.filter(message=message)
-        return [notification['user__username'] for notification in notifications_with_message.values('user__username')]
+        return [
+            notification["user__username"]
+            for notification in notifications_with_message.values("user__username")
+        ]
 
     def fetch_messages(self, *, page):
         room = self.get_room(self.room_id)
@@ -155,6 +160,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             for message in message_page_display_order:
                 message["created_at"] = message["created_at"].strftime("%d-%m-%Y %H:%M")
                 message["filename"] = str(message["filename"])
+                message["download"] = generate_download_signed_url_v4(
+                    str(message["filename"])
+                )
             return message_page_display_order, page
         except ObjectDoesNotExist:
             pass
@@ -186,6 +194,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         for message in accumulated_messages:
             message["created_at"] = message["created_at"].strftime("%d-%m-%Y %H:%M")
             message["filename"] = str(message["filename"])
+            message["download"] = generate_download_signed_url_v4(
+                str(message["filename"])
+            )
         return accumulated_messages, page
 
     async def connect(self):
@@ -227,7 +238,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     "type": "refresh_notifications",
                 },
             )
-            await self.get_room_messages(page=1)
+            await self.get_room_messages_up_to_page(page=1)
             await self.fetch_display_name()
             await self.fetch_privacy()
             await self.fetch_join_requests()
@@ -316,7 +327,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         )(page=page)
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "messages", "messages": messages, "page": page_number},
+            {
+                "type": "messages",
+                "messages": messages,
+                "page": page_number,
+                "refresh_messages_in": 604790000,
+            },
         )
 
     async def get_room_messages(self, *, page):
@@ -331,13 +347,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def send_message(self, input_payload):
         filename = input_payload["filename"]
         if len(filename.strip()) > 0:
-            source = {
-                "url": f"https://storage.googleapis.com/blabhear-uploads/{filename}"
-            }
+            source = {"url": generate_download_signed_url_v4(filename)}
             options = {
                 "punctuate": True,
                 "model": "general",
-                "detect_language": True,
+                "language": "en",
                 "tier": "enhanced",
             }
             response = await DEEPGRAM_CLIENT.transcription.prerecorded(source, options)
