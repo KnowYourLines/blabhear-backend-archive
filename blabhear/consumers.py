@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import uuid
 from operator import itemgetter
@@ -15,6 +16,7 @@ from blabhear.storage import (
     generate_download_signed_url_v4,
 )
 
+logger = logging.getLogger(__name__)
 DEEPGRAM_CLIENT = Deepgram(os.environ.get("DEEPGRAM_API_KEY"))
 
 
@@ -362,7 +364,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 "language": "en",
                 "tier": "enhanced",
             }
-            response = await DEEPGRAM_CLIENT.transcription.prerecorded(source, options)
+            try:
+                response = await DEEPGRAM_CLIENT.transcription.prerecorded(
+                    source, options
+                )
+            except Exception as error:
+                logger.error(
+                    f"When attempting transcription, message with filename {filename} generated {error}"
+                )
+                return
             transcript = response["results"]["channels"][0]["alternatives"][0][
                 "transcript"
             ]
