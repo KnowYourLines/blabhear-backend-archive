@@ -126,10 +126,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             notification.read = user == self.user
             notification.save()
 
-    def create_new_message(self, transcript, filename):
+    def create_new_message(self, content, filename):
         room = self.get_room(self.room_id)
         new_message = Message.objects.create(
-            creator=self.user, room=room, content=transcript, filename=filename
+            creator=self.user, room=room, content=content, filename=filename
         )
         self.create_new_message_notification_for_all_room_members(new_message)
         return {
@@ -139,10 +139,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             "created_at": new_message.created_at.strftime("%d-%m-%Y %H:%M"),
             "filename": str(new_message.filename),
             "download": generate_download_signed_url_v4(str(new_message.filename)),
+            "id": str(new_message.id),
         }
 
-    def edit_message_content(self, filename, new_content):
-        message = Message.objects.get(filename=filename)
+    def edit_message_content(self, message_id, new_content):
+        message = Message.objects.get(id=message_id)
         if message.creator == self.user:
             message.content = new_content
             message.save()
@@ -162,6 +163,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     "creator__username",
                     "created_at",
                     "filename",
+                    "id",
                 ),
                 10,
             )
@@ -170,6 +172,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             for message in message_page_display_order:
                 message["created_at"] = message["created_at"].strftime("%d-%m-%Y %H:%M")
                 message["filename"] = str(message["filename"])
+                message["id"] = str(message["id"])
                 message["download"] = generate_download_signed_url_v4(
                     str(message["filename"])
                 )
@@ -191,6 +194,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                         "creator__username",
                         "created_at",
                         "filename",
+                        "id",
                     ),
                     10,
                 )
@@ -204,6 +208,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         for message in accumulated_messages:
             message["created_at"] = message["created_at"].strftime("%d-%m-%Y %H:%M")
             message["filename"] = str(message["filename"])
+            message["id"] = str(message["id"])
             message["download"] = generate_download_signed_url_v4(
                 str(message["filename"])
             )
@@ -298,7 +303,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def edit_message(self, payload):
         users_to_refresh = await database_sync_to_async(self.edit_message_content)(
-            payload["filename"], payload["edited_message"]
+            payload["message_id"], payload["edited_message"]
         )
         await self.channel_layer.group_send(
             self.room_id,
@@ -355,8 +360,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def send_message(self, input_payload):
+        new_message = None
+        message = input_payload["message"]
         filename = input_payload["filename"]
-        if len(filename.strip()) > 0:
+        if isinstance(filename, str):
             source = {"url": generate_download_signed_url_v4(filename)}
             options = {
                 "punctuate": True,
@@ -379,6 +386,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             new_message = await database_sync_to_async(self.create_new_message)(
                 transcript, filename
             )
+        elif len(message.strip()) > 0:
+            new_message = await database_sync_to_async(self.create_new_message)(
+                message, None
+            )
+        if new_message:
             await self.channel_layer.group_send(
                 self.room_id,
                 {"type": "new_message", "new_message": new_message},
