@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import os
 import uuid
@@ -145,6 +146,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     def edit_message_content(self, message_id, new_content):
         message = Message.objects.get(id=message_id)
         if message.creator == self.user:
+            message.edited_at = datetime.datetime.now(tz=datetime.timezone.utc)
             message.content = new_content
             message.save()
         notifications_with_message = Notification.objects.filter(message=message)
@@ -162,6 +164,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     "content",
                     "creator__username",
                     "created_at",
+                    "edited_at",
                     "filename",
                     "id",
                 ),
@@ -170,6 +173,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             message_page = messages.page(page)
             message_page_display_order = message_page.object_list[::-1]
             for message in message_page_display_order:
+                if message["edited_at"]:
+                    message["edited_at"] = message["edited_at"].strftime(
+                        "%d-%m-%Y %H:%M"
+                    )
                 message["created_at"] = message["created_at"].strftime("%d-%m-%Y %H:%M")
                 message["filename"] = str(message["filename"])
                 message["id"] = str(message["id"])
@@ -193,6 +200,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                         "content",
                         "creator__username",
                         "created_at",
+                        "edited_at",
                         "filename",
                         "id",
                     ),
@@ -206,6 +214,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             except EmptyPage:
                 break
         for message in accumulated_messages:
+            if message["edited_at"]:
+                message["edited_at"] = message["edited_at"].strftime("%d-%m-%Y %H:%M")
             message["created_at"] = message["created_at"].strftime("%d-%m-%Y %H:%M")
             message["filename"] = str(message["filename"])
             message["id"] = str(message["id"])
