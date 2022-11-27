@@ -264,6 +264,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 },
             )
             await self.get_room_messages_up_to_page(page=1)
+            await self.fetch_upload_url()
             await self.fetch_display_name()
             await self.fetch_privacy()
             await self.fetch_join_requests()
@@ -306,6 +307,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.fetch_display_name())
             if content.get("command") == "fetch_upload_url":
                 asyncio.create_task(self.fetch_upload_url())
+            if content.get("command") == "fetch_download_url":
+                asyncio.create_task(
+                    self.fetch_download_url(filename=content["filename"])
+                )
             if content.get("command") == "read_room_notification":
                 asyncio.create_task(self.read_room_notification())
             if content.get("command") == "edit_message":
@@ -344,6 +349,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.send(
             self.channel_name,
             {"type": "upload_url", "upload_url": url, "filename": filename},
+        )
+
+    async def fetch_download_url(self, filename):
+        url = generate_download_signed_url_v4(filename)
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "download_url", "download_url": url},
         )
 
     async def get_room_messages_up_to_page(self, *, page):
@@ -628,6 +640,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def join_requests(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def download_url(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 

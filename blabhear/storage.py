@@ -31,7 +31,7 @@ def generate_upload_signed_url_v4(blob_name):
 
     url = blob.generate_signed_url(
         version="v4",
-        expiration=datetime.timedelta(minutes=15),
+        expiration=datetime.timedelta(days=7),
         method="PUT",
         content_type="application/ogg",
     )
