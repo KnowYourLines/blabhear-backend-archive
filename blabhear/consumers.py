@@ -341,9 +341,17 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def fetch_upload_url(self):
         filename = str(uuid.uuid4())
         url = generate_upload_signed_url_v4(filename)
+        dry_filename = "dry-" + filename
+        dry_url = generate_upload_signed_url_v4(dry_filename)
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "upload_url", "upload_url": url, "filename": filename},
+            {
+                "type": "upload_url",
+                "dry_upload_url": dry_url,
+                "dry_filename": dry_filename,
+                "wet_upload_url": url,
+                "wet_filename": filename,
+            },
         )
 
     async def get_room_messages_up_to_page(self, *, page):
@@ -372,9 +380,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def send_message(self, input_payload):
         new_message = None
         message = input_payload["message"]
-        filename = input_payload["filename"]
-        if isinstance(filename, str):
-            source = {"url": generate_download_signed_url_v4(filename)}
+        dry_filename = input_payload["dry_filename"]
+        wet_filename = input_payload["wet_filename"]
+        if isinstance(dry_filename, str) and isinstance(wet_filename, str):
+            source = {"url": generate_download_signed_url_v4(dry_filename)}
             options = {
                 "punctuate": True,
                 "model": "general",
@@ -387,14 +396,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 )
             except Exception as error:
                 logger.error(
-                    f"When attempting transcription, message with filename {filename} generated {error}"
+                    f"When attempting transcription, message with filename {dry_filename} generated {error}"
                 )
                 return
             transcript = response["results"]["channels"][0]["alternatives"][0][
                 "transcript"
             ]
             new_message = await database_sync_to_async(self.create_new_message)(
-                transcript, filename
+                transcript, wet_filename
             )
         elif len(message.strip()) > 0:
             new_message = await database_sync_to_async(self.create_new_message)(
