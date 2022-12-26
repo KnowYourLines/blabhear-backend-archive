@@ -688,7 +688,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         if not room_to_leave.members.all() and not room_to_leave.joinrequest_set.all():
             room_to_leave.delete()
 
-    def change_display_name(self, new_name):
+    def change_user_display_name(self, new_name):
         self.user.display_name = new_name
         self.user.save()
         rooms_to_refresh = [
@@ -721,7 +721,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                     "notifications": notifications,
                 },
             )
-            await self.fetch_display_name()
+            await self.fetch_user_display_name()
         else:
             await self.close()
 
@@ -734,16 +734,16 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.exit_room(content))
             if content.get("command") == "fetch_notifications":
                 asyncio.create_task(self.fetch_notifications())
-            if content.get("command") == "update_display_name":
-                asyncio.create_task(self.update_display_name(content))
+            if content.get("command") == "update_user_display_name":
+                asyncio.create_task(self.update_user_display_name(content))
 
-    async def update_display_name(self, input_payload):
+    async def update_user_display_name(self, input_payload):
         if len(input_payload["name"].strip()) > 0:
             (
                 display_name,
                 rooms_to_refresh,
                 users_to_refresh,
-            ) = await database_sync_to_async(self.change_display_name)(
+            ) = await database_sync_to_async(self.change_user_display_name)(
                 input_payload["name"]
             )
             for room in rooms_to_refresh:
@@ -762,18 +762,18 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_send(
                 self.username,
                 {
-                    "type": "display_name",
-                    "display_name": display_name,
+                    "type": "user_display_name",
+                    "user_display_name": display_name,
                 },
             )
         else:
-            await self.fetch_display_name()
+            await self.fetch_user_display_name()
 
-    async def fetch_display_name(self):
+    async def fetch_user_display_name(self):
         display_name = self.user.display_name
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "display_name", "display_name": display_name},
+            {"type": "user_display_name", "user_display_name": display_name},
         )
 
     async def fetch_notifications(self):
@@ -813,6 +813,6 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         # Send message to WebSocket
         await self.send_json(event)
 
-    async def display_name(self, event):
+    async def user_display_name(self, event):
         # Send message to WebSocket
         await self.send_json(event)
