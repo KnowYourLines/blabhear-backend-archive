@@ -379,9 +379,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def send_message(self, input_payload):
         new_message = None
-        message = input_payload["message"]
-        dry_filename = input_payload["dry_filename"]
-        wet_filename = input_payload["wet_filename"]
+        message = input_payload.get("message", "")
+        dry_filename = input_payload.get("dry_filename")
+        wet_filename = input_payload.get("wet_filename")
         if isinstance(dry_filename, str) and isinstance(wet_filename, str):
             source = {"url": generate_download_signed_url_v4(dry_filename)}
             options = {
