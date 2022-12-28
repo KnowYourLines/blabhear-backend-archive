@@ -563,7 +563,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if self.user.username not in member_usernames and not room.private:
             await self.channel_layer.send(
                 self.channel_name,
-                {"type": "left_room"},
+                {"type": "left_room", "room": str(room.id)},
             )
 
     async def fetch_privacy(self):
