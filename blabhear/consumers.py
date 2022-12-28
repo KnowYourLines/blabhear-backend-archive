@@ -226,10 +226,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def connect(self):
         await self.accept()
-
-        self.room_id = self.scope["url_route"]["kwargs"]["room_id"]
         self.user = self.scope["user"]
-        await self.initialize_room()
 
     async def initialize_room(self):
         await self.channel_layer.group_add(self.room_id, self.channel_name)
@@ -279,7 +276,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def receive_json(self, content, **kwargs):
         if content.get("command") == "connect":
-            await self.channel_layer.group_discard(str(self.room_id), self.channel_name)
             self.room_id = content.get("room")
             await self.initialize_room()
         if content.get("command") == "disconnect":
