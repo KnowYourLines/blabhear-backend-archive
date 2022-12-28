@@ -238,7 +238,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if user_not_allowed:
             await self.channel_layer.send(
                 self.channel_name,
-                {"type": "allowed", "allowed": False},
+                {"type": "allowed", "allowed": False, "room": self.room_id},
             )
             await database_sync_to_async(self.get_or_create_new_join_request)()
             await self.channel_layer.group_send(
@@ -246,6 +246,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 {"type": "refresh_join_requests"},
             )
         else:
+            await self.channel_layer.send(
+                self.channel_name,
+                {"type": "allowed", "allowed": True, "room": self.room_id},
+            )
             members, was_added = await database_sync_to_async(self.add_user_to_room)(
                 self.user, room
             )
@@ -278,6 +282,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(str(self.room_id), self.channel_name)
             self.room_id = content.get("room")
             await self.initialize_room()
+        if content.get("command") == "disconnect":
+            await self.channel_layer.group_discard(str(self.room_id), self.channel_name)
         user_not_allowed = await database_sync_to_async(self.user_not_allowed)()
         user_allowed = not user_not_allowed
         if content.get("command") == "fetch_allowed_status":
@@ -495,11 +501,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             self.room_id,
             {"type": "refresh_privacy"},
         )
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "room_notified"},
+        )
 
     async def fetch_allowed_status(self, allowed_status):
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "allowed", "allowed": allowed_status},
+            {"type": "allowed", "allowed": allowed_status, "room": self.room_id},
         )
         if not allowed_status:
             await database_sync_to_async(self.get_or_create_new_join_request)()
@@ -542,6 +552,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_send(
             self.room_id,
             {"type": "refresh_privacy"},
+        )
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "room_notified"},
         )
 
     async def reject_user(self, input_payload):
