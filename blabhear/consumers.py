@@ -229,7 +229,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
         self.room_id = self.scope["url_route"]["kwargs"]["room_id"]
         self.user = self.scope["user"]
+        await self.initialize_room()
 
+    async def initialize_room(self):
         await self.channel_layer.group_add(self.room_id, self.channel_name)
         room = await database_sync_to_async(self.get_room)(self.room_id)
         user_not_allowed = await database_sync_to_async(self.user_not_allowed)()
@@ -269,10 +271,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.fetch_join_requests()
 
     async def disconnect(self, close_code):
-        room = await database_sync_to_async(self.get_room)(self.room_id)
-        await self.channel_layer.group_discard(str(room.id), self.channel_name)
+        await self.channel_layer.group_discard(str(self.room_id), self.channel_name)
 
     async def receive_json(self, content, **kwargs):
+        if content.get("command") == "connect":
+            await self.channel_layer.group_discard(str(self.room_id), self.channel_name)
+            self.room_id = content.get("room")
+            await self.initialize_room()
         user_not_allowed = await database_sync_to_async(self.user_not_allowed)()
         user_allowed = not user_not_allowed
         if content.get("command") == "fetch_allowed_status":
