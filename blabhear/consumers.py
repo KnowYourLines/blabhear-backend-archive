@@ -365,15 +365,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         messages, page_number = await database_sync_to_async(
             self.fetch_messages_up_to_page
         )(page=page)
-        await self.channel_layer.send(
-            self.channel_name,
-            {
-                "type": "messages",
-                "messages": messages,
-                "page": page_number,
-                "refresh_messages_in": 604790000,
-            },
-        )
+        if messages:
+            await self.channel_layer.send(
+                self.channel_name,
+                {
+                    "type": "messages",
+                    "messages": messages,
+                    "page": page_number,
+                    "refresh_messages_in": 604790000,
+                },
+            )
 
     async def get_room_messages(self, *, page):
         messages, page_number = await database_sync_to_async(self.fetch_messages)(
