@@ -39,6 +39,78 @@ class Message(models.Model):
     filename = models.UUIDField(null=True, blank=True)
 
 
+class RecordingSettings(models.Model):
+    class Language(models.TextChoices):
+        CHINESE = "zh"
+        CHINESE_CHINA = "zh-CN"
+        CHINESE_TAIWAN = "zh-TW"
+        DANISH = "da"
+        DUTCH = "nl"
+        ENGLISH = "en"
+        ENGLISH_AUSTRALIA = "en-AU"
+        ENGLISH_UNITED_KINGDOM = "en-GB"
+        ENGLISH_INDIA = "en-IN"
+        ENGLISH_NEW_ZEALAND = "en-NZ"
+        ENGLISH_UNITED_STATES = "en-US"
+        FRENCH = "fr"
+        FRENCH_CANADA = "fr-CA"
+        GERMAN = "de"
+        HINDI = "hi"
+        HINDI_ROMAN_SCRIPT = "hi-Latn"
+        INDONESIAN = "id"
+        ITALIAN = "it"
+        JAPANESE = "ja"
+        KOREAN = "ko"
+        NORWEGIAN = "no"
+        POLISH = "pl"
+        PORTUGUESE = "pt"
+        PORTUGUESE_BRAZIL = "pt-BR"
+        PORTUGUESE_PORTUGAL = "pt-PT"
+        RUSSIAN = "ru"
+        SPANISH = "es"
+        SPANISH_LATIN_AMERICA = "es-419"
+        SWEDISH = "sv"
+        TAMIL = "ta"
+        TURKISH = "tr"
+        UKRAINIAN = "uk"
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE)
+    language = models.CharField(
+        max_length=10,
+        choices=Language.choices,
+        default=Language.ENGLISH
+    )
+
+    def base_only_language(self):
+        return self.language in {
+            self.Language.CHINESE,
+            self.Language.CHINESE_CHINA,
+            self.Language.CHINESE_TAIWAN,
+            self.Language.ENGLISH_AUSTRALIA,
+            self.Language.ENGLISH_UNITED_KINGDOM,
+            self.Language.ENGLISH_INDIA,
+            self.Language.ENGLISH_NEW_ZEALAND,
+            self.Language.FRENCH_CANADA,
+            self.Language.HINDI_ROMAN_SCRIPT,
+            self.Language.INDONESIAN,
+            self.Language.RUSSIAN,
+            self.Language.TURKISH,
+            self.Language.UKRAINIAN,
+        }
+
+    def save(self, *args, **kwargs):
+        other_recording_settings = RecordingSettings.objects.filter(
+            user=self.user, room=self.room
+        ).exclude(id=self.id)
+        if other_recording_settings.exists():
+            raise ValidationError(
+                _("Recording settings must be unique per user in room.")
+            )
+        self.full_clean()
+        super(RecordingSettings, self).save(*args, **kwargs)
+
+
 class JoinRequest(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)

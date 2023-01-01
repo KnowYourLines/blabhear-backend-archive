@@ -11,7 +11,7 @@ from deepgram import Deepgram
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.paginator import Paginator, EmptyPage
 
-from blabhear.models import Room, JoinRequest, User, Notification, Message
+from blabhear.models import Room, JoinRequest, User, Notification, Message, RecordingSettings
 from blabhear.storage import (
     generate_upload_signed_url_v4,
     generate_download_signed_url_v4,
@@ -155,6 +155,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             for notification in notifications_with_message.values("user__username")
         ]
 
+    def get_recording_settings(self):
+        room = self.get_room(self.room_id)
+        settings, created = RecordingSettings.objects.get_or_create(room=room, user=self.user)
+        return settings
+
     def fetch_messages(self, *, page):
         room = self.get_room(self.room_id)
         try:
@@ -270,6 +275,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.fetch_display_name()
             await self.fetch_privacy()
             await self.fetch_join_requests()
+            await self.fetch_recording_settings()
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(str(self.room_id), self.channel_name)
@@ -317,6 +323,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.read_room_notification())
             if content.get("command") == "edit_message":
                 asyncio.create_task(self.edit_message(content))
+
+    async def fetch_recording_settings(self):
+        recording_settings = await database_sync_to_async(self.get_recording_settings)()
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "recording_settings", "language": recording_settings.language},
+        )
 
     async def edit_message(self, payload):
         users_to_refresh = await database_sync_to_async(self.edit_message_content)(
@@ -653,6 +666,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def join_requests(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def recording_settings(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
