@@ -45,7 +45,7 @@ class RecordingSettings(models.Model):
         CHINESE_CHINA = "zh-CN"
         CHINESE_TAIWAN = "zh-TW"
         DANISH = "da"
-        DUTCH = "nl"
+        DUTCH_FLEMISH = "nl"
         ENGLISH = "en"
         ENGLISH_AUSTRALIA = "en-AU"
         ENGLISH_UNITED_KINGDOM = "en-GB"
@@ -73,13 +73,12 @@ class RecordingSettings(models.Model):
         TAMIL = "ta"
         TURKISH = "tr"
         UKRAINIAN = "uk"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     room = models.ForeignKey(Room, on_delete=models.CASCADE)
     language = models.CharField(
-        max_length=10,
-        choices=Language.choices,
-        default=Language.ENGLISH
+        max_length=10, choices=Language.choices, default=Language.ENGLISH
     )
 
     def base_only_language(self):

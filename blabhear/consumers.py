@@ -11,7 +11,15 @@ from deepgram import Deepgram
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.paginator import Paginator, EmptyPage
 
-from blabhear.models import Room, JoinRequest, User, Notification, Message, RecordingSettings
+from blabhear.constants import LANGUAGES
+from blabhear.models import (
+    Room,
+    JoinRequest,
+    User,
+    Notification,
+    Message,
+    RecordingSettings,
+)
 from blabhear.storage import (
     generate_upload_signed_url_v4,
     generate_download_signed_url_v4,
@@ -157,7 +165,19 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     def get_recording_settings(self):
         room = self.get_room(self.room_id)
-        settings, created = RecordingSettings.objects.get_or_create(room=room, user=self.user)
+        settings, created = RecordingSettings.objects.get_or_create(
+            room=room, user=self.user
+        )
+        return settings
+
+    def update_language(self, new_language_name):
+        room = self.get_room(self.room_id)
+        settings = RecordingSettings.objects.get(room=room, user=self.user)
+        for language in LANGUAGES:
+            if language[0] == new_language_name:
+                new_language = language[1]
+                settings.language = new_language
+                settings.save()
         return settings
 
     def fetch_messages(self, *, page):
@@ -291,6 +311,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if content.get("command") == "fetch_allowed_status":
             asyncio.create_task(self.fetch_allowed_status(user_allowed))
         elif user_allowed:
+            if content.get("command") == "change_language":
+                asyncio.create_task(self.change_language(content))
             if content.get("command") == "update_privacy":
                 asyncio.create_task(self.update_privacy(content))
             if content.get("command") == "fetch_privacy":
@@ -326,9 +348,37 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def fetch_recording_settings(self):
         recording_settings = await database_sync_to_async(self.get_recording_settings)()
+        language_name = "Not Found"
+        for language in LANGUAGES:
+            if language[1] == recording_settings.language:
+                language_name = language[0]
+        if language_name == "Not Found":
+            logger.error(
+                f"Could not find language name for language {recording_settings.language} in recording settings for "
+                f"user {recording_settings.user} in room {recording_settings.room}"
+            )
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "recording_settings", "language": recording_settings.language},
+            {"type": "recording_settings", "language_name": language_name},
+        )
+
+    async def change_language(self, input_payload):
+        new_language = input_payload.get("language")
+        recording_settings = await database_sync_to_async(self.update_language)(
+            new_language
+        )
+        language_name = "Not Found"
+        for language in LANGUAGES:
+            if language[1] == recording_settings.language:
+                language_name = language[0]
+        if language_name == "Not Found":
+            logger.error(
+                f"Could not find language name for language {recording_settings.language} in recording settings for "
+                f"user {recording_settings.user} in room {recording_settings.room}"
+            )
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "recording_settings", "language_name": language_name},
         )
 
     async def edit_message(self, payload):
@@ -405,11 +455,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         wet_filename = input_payload.get("wet_filename")
         if isinstance(dry_filename, str) and isinstance(wet_filename, str):
             source = {"url": generate_download_signed_url_v4(dry_filename)}
+            recording_settings = await database_sync_to_async(
+                self.get_recording_settings
+            )()
             options = {
                 "punctuate": True,
                 "model": "general",
-                "language": "en",
-                "tier": "enhanced",
+                "language": recording_settings.language,
+                "tier": "base"
+                if recording_settings.base_only_language()
+                else "enhanced",
             }
             try:
                 response = await DEEPGRAM_CLIENT.transcription.prerecorded(
