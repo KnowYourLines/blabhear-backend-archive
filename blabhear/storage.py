@@ -33,7 +33,7 @@ def generate_upload_signed_url_v4(blob_name):
         version="v4",
         expiration=datetime.timedelta(minutes=15),
         method="PUT",
-        content_type="application/ogg",
+        content_type="audio/wav",
     )
     return url
 

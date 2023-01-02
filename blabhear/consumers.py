@@ -11,7 +11,15 @@ from deepgram import Deepgram
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.paginator import Paginator, EmptyPage
 
-from blabhear.models import Room, JoinRequest, User, Notification, Message
+from blabhear.constants import LANGUAGES
+from blabhear.models import (
+    Room,
+    JoinRequest,
+    User,
+    Notification,
+    Message,
+    RecordingSettings,
+)
 from blabhear.storage import (
     generate_upload_signed_url_v4,
     generate_download_signed_url_v4,
@@ -155,6 +163,30 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             for notification in notifications_with_message.values("user__username")
         ]
 
+    def get_recording_settings(self):
+        room = self.get_room(self.room_id)
+        settings, created = RecordingSettings.objects.get_or_create(
+            room=room, user=self.user
+        )
+        return settings
+
+    def update_language(self, new_language_name):
+        room = self.get_room(self.room_id)
+        settings = RecordingSettings.objects.get(room=room, user=self.user)
+        for language in LANGUAGES:
+            if language[0] == new_language_name:
+                new_language = language[1]
+                settings.language = new_language
+                settings.save()
+        return settings
+
+    def update_voice_effect(self, new_voice_effect):
+        room = self.get_room(self.room_id)
+        settings = RecordingSettings.objects.get(room=room, user=self.user)
+        settings.voice_effect = new_voice_effect
+        settings.save()
+        return settings
+
     def fetch_messages(self, *, page):
         room = self.get_room(self.room_id)
         try:
@@ -226,17 +258,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def connect(self):
         await self.accept()
-
-        self.room_id = self.scope["url_route"]["kwargs"]["room_id"]
         self.user = self.scope["user"]
 
+    async def initialize_room(self):
         await self.channel_layer.group_add(self.room_id, self.channel_name)
         room = await database_sync_to_async(self.get_room)(self.room_id)
         user_not_allowed = await database_sync_to_async(self.user_not_allowed)()
         if user_not_allowed:
             await self.channel_layer.send(
                 self.channel_name,
-                {"type": "allowed", "allowed": False},
+                {"type": "allowed", "allowed": False, "room": self.room_id},
             )
             await database_sync_to_async(self.get_or_create_new_join_request)()
             await self.channel_layer.group_send(
@@ -244,6 +275,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 {"type": "refresh_join_requests"},
             )
         else:
+            await self.channel_layer.send(
+                self.channel_name,
+                {"type": "allowed", "allowed": True, "room": self.room_id},
+            )
             members, was_added = await database_sync_to_async(self.add_user_to_room)(
                 self.user, room
             )
@@ -267,17 +302,26 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.fetch_display_name()
             await self.fetch_privacy()
             await self.fetch_join_requests()
+            await self.fetch_recording_settings()
 
     async def disconnect(self, close_code):
-        room = await database_sync_to_async(self.get_room)(self.room_id)
-        await self.channel_layer.group_discard(str(room.id), self.channel_name)
+        await self.channel_layer.group_discard(str(self.room_id), self.channel_name)
 
     async def receive_json(self, content, **kwargs):
+        if content.get("command") == "connect":
+            self.room_id = content.get("room")
+            await self.initialize_room()
+        if content.get("command") == "disconnect":
+            await self.channel_layer.group_discard(str(self.room_id), self.channel_name)
         user_not_allowed = await database_sync_to_async(self.user_not_allowed)()
         user_allowed = not user_not_allowed
         if content.get("command") == "fetch_allowed_status":
             asyncio.create_task(self.fetch_allowed_status(user_allowed))
         elif user_allowed:
+            if content.get("command") == "change_voice_effect":
+                asyncio.create_task(self.change_voice_effect(content))
+            if content.get("command") == "change_language":
+                asyncio.create_task(self.change_language(content))
             if content.get("command") == "update_privacy":
                 asyncio.create_task(self.update_privacy(content))
             if content.get("command") == "fetch_privacy":
@@ -311,6 +355,58 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             if content.get("command") == "edit_message":
                 asyncio.create_task(self.edit_message(content))
 
+    async def fetch_recording_settings(self):
+        recording_settings = await database_sync_to_async(self.get_recording_settings)()
+        language_name = "Not Found"
+        for language in LANGUAGES:
+            if language[1] == recording_settings.language:
+                language_name = language[0]
+        if language_name == "Not Found":
+            logger.error(
+                f"Could not find language name for language {recording_settings.language} in recording settings for "
+                f"user {recording_settings.user} in room {recording_settings.room}"
+            )
+        await self.channel_layer.send(
+            self.channel_name,
+            {
+                "type": "recording_settings",
+                "language_name": language_name,
+                "voice_effect": recording_settings.voice_effect,
+            },
+        )
+
+    async def change_voice_effect(self, input_payload):
+        new_voice_effect = input_payload.get("voice_effect")
+        recording_settings = await database_sync_to_async(self.update_voice_effect)(
+            new_voice_effect
+        )
+        await self.channel_layer.send(
+            self.channel_name,
+            {
+                "type": "recording_settings",
+                "voice_effect": recording_settings.voice_effect,
+            },
+        )
+
+    async def change_language(self, input_payload):
+        new_language = input_payload.get("language")
+        recording_settings = await database_sync_to_async(self.update_language)(
+            new_language
+        )
+        language_name = "Not Found"
+        for language in LANGUAGES:
+            if language[1] == recording_settings.language:
+                language_name = language[0]
+        if language_name == "Not Found":
+            logger.error(
+                f"Could not find language name for language {recording_settings.language} in recording settings for "
+                f"user {recording_settings.user} in room {recording_settings.room}"
+            )
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "recording_settings", "language_name": language_name},
+        )
+
     async def edit_message(self, payload):
         users_to_refresh = await database_sync_to_async(self.edit_message_content)(
             payload["message_id"], payload["edited_message"]
@@ -341,24 +437,33 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def fetch_upload_url(self):
         filename = str(uuid.uuid4())
         url = generate_upload_signed_url_v4(filename)
+        dry_filename = "dry-" + filename
+        dry_url = generate_upload_signed_url_v4(dry_filename)
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "upload_url", "upload_url": url, "filename": filename},
+            {
+                "type": "upload_url",
+                "dry_upload_url": dry_url,
+                "dry_filename": dry_filename,
+                "wet_upload_url": url,
+                "wet_filename": filename,
+            },
         )
 
     async def get_room_messages_up_to_page(self, *, page):
         messages, page_number = await database_sync_to_async(
             self.fetch_messages_up_to_page
         )(page=page)
-        await self.channel_layer.send(
-            self.channel_name,
-            {
-                "type": "messages",
-                "messages": messages,
-                "page": page_number,
-                "refresh_messages_in": 604790000,
-            },
-        )
+        if messages:
+            await self.channel_layer.send(
+                self.channel_name,
+                {
+                    "type": "messages",
+                    "messages": messages,
+                    "page": page_number,
+                    "refresh_messages_in": 604790000,
+                },
+            )
 
     async def get_room_messages(self, *, page):
         messages, page_number = await database_sync_to_async(self.fetch_messages)(
@@ -371,15 +476,21 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def send_message(self, input_payload):
         new_message = None
-        message = input_payload["message"]
-        filename = input_payload["filename"]
-        if isinstance(filename, str):
-            source = {"url": generate_download_signed_url_v4(filename)}
+        message = input_payload.get("message", "")
+        dry_filename = input_payload.get("dry_filename")
+        wet_filename = input_payload.get("wet_filename")
+        if isinstance(dry_filename, str) and isinstance(wet_filename, str):
+            source = {"url": generate_download_signed_url_v4(dry_filename)}
+            recording_settings = await database_sync_to_async(
+                self.get_recording_settings
+            )()
             options = {
                 "punctuate": True,
                 "model": "general",
-                "language": "en",
-                "tier": "enhanced",
+                "language": recording_settings.language,
+                "tier": "base"
+                if recording_settings.base_only_language()
+                else "enhanced",
             }
             try:
                 response = await DEEPGRAM_CLIENT.transcription.prerecorded(
@@ -387,14 +498,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 )
             except Exception as error:
                 logger.error(
-                    f"When attempting transcription, message with filename {filename} generated {error}"
+                    f"When attempting transcription, message with filename {dry_filename} generated {error}"
                 )
                 return
             transcript = response["results"]["channels"][0]["alternatives"][0][
                 "transcript"
             ]
             new_message = await database_sync_to_async(self.create_new_message)(
-                transcript, filename
+                transcript, wet_filename
             )
         elif len(message.strip()) > 0:
             new_message = await database_sync_to_async(self.create_new_message)(
@@ -481,11 +592,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             self.room_id,
             {"type": "refresh_privacy"},
         )
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "room_notified"},
+        )
 
     async def fetch_allowed_status(self, allowed_status):
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "allowed", "allowed": allowed_status},
+            {"type": "allowed", "allowed": allowed_status, "room": self.room_id},
         )
         if not allowed_status:
             await database_sync_to_async(self.get_or_create_new_join_request)()
@@ -529,6 +644,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             self.room_id,
             {"type": "refresh_privacy"},
         )
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "room_notified"},
+        )
 
     async def reject_user(self, input_payload):
         await database_sync_to_async(self.reject_room_member)(input_payload["username"])
@@ -549,7 +668,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if self.user.username not in member_usernames and not room.private:
             await self.channel_layer.send(
                 self.channel_name,
-                {"type": "left_room"},
+                {"type": "left_room", "room": str(room.id)},
             )
 
     async def fetch_privacy(self):
@@ -628,6 +747,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def join_requests(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def recording_settings(self, event):
         # Send message to WebSocket
         await self.send_json(event)
 
