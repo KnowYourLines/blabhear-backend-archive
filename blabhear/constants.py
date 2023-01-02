@@ -28,6 +28,7 @@ LANGUAGES = [
     ("German", "de"),
     ("Dutch/Flemish", "nl"),
     ("Danish", "da"),
+    ("Chinese", "zh"),
     ("Chinese (CN)", "zh-CN"),
     ("Chinese (TW)", "zh-TW"),
 ]
