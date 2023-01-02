@@ -180,6 +180,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 settings.save()
         return settings
 
+    def update_voice_effect(self, new_voice_effect):
+        room = self.get_room(self.room_id)
+        settings = RecordingSettings.objects.get(room=room, user=self.user)
+        settings.voice_effect = new_voice_effect
+        settings.save()
+        return settings
+
     def fetch_messages(self, *, page):
         room = self.get_room(self.room_id)
         try:
@@ -311,6 +318,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if content.get("command") == "fetch_allowed_status":
             asyncio.create_task(self.fetch_allowed_status(user_allowed))
         elif user_allowed:
+            if content.get("command") == "change_voice_effect":
+                asyncio.create_task(self.change_voice_effect(content))
             if content.get("command") == "change_language":
                 asyncio.create_task(self.change_language(content))
             if content.get("command") == "update_privacy":
@@ -359,7 +368,24 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             )
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "recording_settings", "language_name": language_name},
+            {
+                "type": "recording_settings",
+                "language_name": language_name,
+                "voice_effect": recording_settings.voice_effect,
+            },
+        )
+
+    async def change_voice_effect(self, input_payload):
+        new_voice_effect = input_payload.get("voice_effect")
+        recording_settings = await database_sync_to_async(self.update_voice_effect)(
+            new_voice_effect
+        )
+        await self.channel_layer.send(
+            self.channel_name,
+            {
+                "type": "recording_settings",
+                "voice_effect": recording_settings.voice_effect,
+            },
         )
 
     async def change_language(self, input_payload):

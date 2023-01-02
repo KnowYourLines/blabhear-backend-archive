@@ -80,6 +80,9 @@ class RecordingSettings(models.Model):
     language = models.CharField(
         max_length=10, choices=Language.choices, default=Language.ENGLISH
     )
+    voice_effect = models.CharField(
+        max_length=255, null=True, blank=True, default="None"
+    )
 
     def base_only_language(self):
         return self.language in {
